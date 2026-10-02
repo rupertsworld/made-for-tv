@@ -1,0 +1,68 @@
+---
+title: tv-markdown
+description: The output of <tv-markdown> for a sample document, styled by spec/tv-markdown/style.css. Press Tab to see link focus.
+params:
+  scheme: { enum: [light, dark], default: light }
+  width: { enum: [wide, narrow], default: wide }
+  overrides: { type: boolean, default: false }
+imports:
+  - ../spec/tv-markdown/style.css
+style: |
+  body { margin: 0; }
+  .page { box-sizing: border-box; min-height: 100vh; padding: 32px; color-scheme: light; background: light-dark(white, oklch(20.5% 0 0)); }
+  .page[data-scheme="dark"] { color-scheme: dark; }
+  .page[data-width="wide"] tv-markdown { max-width: 720px; }
+  .page[data-width="narrow"] tv-markdown { max-width: 340px; }
+  .page[data-overrides="true"] tv-markdown {
+    --tv-markdown-font: Georgia, "Times New Roman", serif;
+    --tv-markdown-link: oklch(55% 0.18 30);
+    --tv-markdown-heading-weight: 700;
+    --tv-markdown-block-space: 16px;
+  }
+---
+<div class="page" data-scheme="{{ scheme }}" data-width="{{ width }}" data-overrides="{{ overrides }}">
+<tv-markdown>
+<h1 id="reading-notes">Reading notes</h1>
+<p>Notes on <em>agent behaviour</em> and <strong>goal pressure</strong>, with sources linked as ordinary links such as <a href="https://example.org/impossiblebench">ImpossibleBench</a> and as wikilinks such as <a data-wikilink="topics/goal-pressure" tabindex="0" role="link">topics/goal-pressure</a> or <a data-wikilink="jane" tabindex="0" role="link">Jane</a>. A link to a heading: <a href="#open-questions">open questions</a>.</p>
+<h2 id="sources">Sources</h2>
+<ul>
+<li>Training conditions shape later failures.</li>
+<li>Stopping options reduce specification violations.
+<ul>
+<li>Some models more than others.</li>
+</ul>
+</li>
+<li>A longer item that wraps onto a second line, to show the line height and the indent of continued text in a list item.</li>
+</ul>
+<ol start="3">
+<li>A numbered list that starts at three.</li>
+<li>Its second item.</li>
+</ol>
+<h3 id="to-do">To do</h3>
+<ul>
+<li><input type="checkbox" disabled checked> Read the full paper</li>
+<li><input type="checkbox" disabled> Compare the benchmark numbers</li>
+</ul>
+<blockquote>
+<p>Behaviour does not establish motives.</p>
+</blockquote>
+<p>Inline code looks like <code>linkclick</code>, and a block of code looks like this:</p>
+<pre><code>md.addEventListener('linkclick', event =&gt; {
+  if (event.wikilink) openNote(event.wikilink);
+});</code></pre>
+<table>
+<thead>
+<tr><th>Source</th><th>Finding</th><th>Limits</th></tr>
+</thead>
+<tbody>
+<tr><td>ImpossibleBench</td><td>Feedback increased violations</td><td>Runtime not isolated</td></tr>
+<tr><td>Reward Hacking Benchmark</td><td>More exploits in longer chains</td><td>Several conditions changed together</td></tr>
+</tbody>
+</table>
+<hr>
+<h2 id="open-questions">Open questions</h2>
+<p>An image keeps its aspect ratio and never exceeds the width of the element:</p>
+<p><img alt="A wide sample image" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='960' height='240'%3E%3Crect width='960' height='240' fill='%23a3a3a3'/%3E%3Ctext x='480' y='130' font-family='sans-serif' font-size='28' text-anchor='middle' fill='white'%3E960 × 240 image%3C/text%3E%3C/svg%3E"></p>
+<p>A very long address wraps instead of overflowing: https://example.org/a/very/long/path/that/would/otherwise/push/the/page/wider/than/the/element</p>
+</tv-markdown>
+</div>

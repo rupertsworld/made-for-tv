@@ -1,0 +1,186 @@
+/*
+ * tv-markdown — element stylesheet.
+ *
+ * This file is the styling specification for <tv-markdown>. The build ships it
+ * unchanged as tv-markdown.css, and frames/tv-markdown.frame renders sample output
+ * with it.
+ *
+ * The prose rules are a copy of the Television canonical prose rules
+ * (/canonical/v2/base.css, regions marked text-display="prose", Television
+ * 1.4.13), scoped to tv-markdown at the same zero specificity.
+ */
+
+/* Each variable resolves once: the element variable, then the Television
+   variable, then a built-in default. Colour defaults use light-dark(), so they
+   follow the color-scheme in effect for the element. */
+tv-markdown {
+  --_text: var(--tv-markdown-text, var(--color-text, light-dark(oklch(20.5% 0 0), oklch(92.2% 0 0))));
+  --_text-muted: var(--tv-markdown-text-muted, var(--color-text-muted, light-dark(oklch(55.6% 0 0), oklch(70.8% 0 0))));
+  --_link: var(--tv-markdown-link, var(--color-link, currentColor));
+  --_border: var(--tv-markdown-border, var(--color-border, light-dark(oklch(20.5% 0 0 / 12%), oklch(92.2% 0 0 / 18%))));
+  --_code-background: var(--tv-markdown-code-background, var(--color-surface-muted, light-dark(oklch(97% 0 0), oklch(26.9% 0 0))));
+  --_focus: var(--tv-markdown-focus, var(--outline-focus, 2px solid light-dark(oklch(55% 0.2 255), oklch(72% 0.15 255))));
+  --_font: var(--tv-markdown-font, var(--font-sans, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif));
+  --_font-mono: var(--tv-markdown-font-mono, var(--font-mono, ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace));
+  --_text-size: var(--tv-markdown-text-size, var(--text-md, 14px));
+  --_heading-1-size: var(--tv-markdown-heading-1-size, var(--text-3xl, 24px));
+  --_heading-2-size: var(--tv-markdown-heading-2-size, var(--text-xl, 18px));
+  --_heading-3-size: var(--tv-markdown-heading-3-size, var(--text-lg, 16px));
+  --_code-size: var(--tv-markdown-code-size, var(--text-sm, 12px));
+  /* Television prose uses medium weight for its Hind typeface. The built-in
+     default is normal weight, which suits system fonts. */
+  --_weight: var(--tv-markdown-weight, var(--font-weight-medium, 400));
+  --_heading-weight: var(--tv-markdown-heading-weight, var(--font-weight-semibold, 600));
+  --_block-space: var(--tv-markdown-block-space, var(--space-12, 12px));
+  --_radius: var(--tv-markdown-radius, var(--control-radius, 6px));
+}
+
+/* The element and body text. */
+:where(tv-markdown) {
+  display: block;
+  color: var(--_text);
+  font-family: var(--_font);
+  font-size: var(--_text-size);
+  font-weight: var(--_weight);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow-wrap: anywhere;
+}
+
+/* The heading scale. */
+:where(tv-markdown h1) {
+  font-size: var(--_heading-1-size);
+  font-weight: var(--_heading-weight);
+  line-height: 1.25;
+  margin: 0 0 var(--space-12, 12px);
+}
+
+:where(tv-markdown h2) {
+  font-size: var(--_heading-2-size);
+  font-weight: var(--_heading-weight);
+  line-height: 1.3;
+  margin: var(--space-24, 24px) 0 var(--space-8, 8px);
+}
+
+:where(tv-markdown :is(h3, h4, h5, h6)) {
+  font-size: var(--_heading-3-size);
+  font-weight: var(--_heading-weight);
+  margin: var(--space-16, 16px) 0 var(--space-4, 4px);
+}
+
+/* Block rhythm. */
+:where(tv-markdown :is(p, ul, ol, blockquote, pre, hr, table)) {
+  margin: 0 0 var(--_block-space);
+}
+
+:where(tv-markdown > :first-child) {
+  margin-top: 0;
+}
+
+:where(tv-markdown > :last-child) {
+  margin-bottom: 0;
+}
+
+/* Links. A wikilink has no href, so it is matched by its data-wikilink attribute. */
+:where(tv-markdown :is(a[href], a[data-wikilink])) {
+  color: var(--_link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+:where(tv-markdown :is(a[href], a[data-wikilink]):focus-visible) {
+  outline: var(--_focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Lists. */
+:where(tv-markdown :is(ul, ol)) {
+  padding-left: var(--space-24, 24px);
+}
+
+:where(tv-markdown li + li) {
+  margin-top: var(--space-4, 4px);
+}
+
+/* A nested list ends with its parent item, not with a block gap. */
+:where(tv-markdown li > :is(ul, ol)) {
+  margin-bottom: 0;
+}
+
+/* Task lists: the checkbox hangs in the list indent, in place of the bullet. */
+:where(tv-markdown li:has(> input[type="checkbox"], > p > input[type="checkbox"])) {
+  list-style: none;
+}
+
+:where(tv-markdown li input[type="checkbox"]) {
+  margin: 0 var(--space-8, 8px) 0 calc(-1 * var(--space-20, 20px));
+  vertical-align: -2px;
+}
+
+/* Blockquotes. */
+:where(tv-markdown blockquote) {
+  border-left: 2px solid var(--_border);
+  padding-left: var(--space-12, 12px);
+  color: var(--_text-muted);
+}
+
+/* Code. */
+:where(tv-markdown code) {
+  font-family: var(--_font-mono);
+  font-size: var(--_code-size);
+  background: var(--_code-background);
+  border-radius: var(--_radius);
+  padding: 1px var(--space-4, 4px);
+}
+
+:where(tv-markdown pre) {
+  font-family: var(--_font-mono);
+  font-size: var(--_code-size);
+  background: var(--_code-background);
+  border: 1px solid var(--_border);
+  border-radius: var(--_radius);
+  padding: var(--space-12, 12px);
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+:where(tv-markdown pre code) {
+  background: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+/* Rules. */
+:where(tv-markdown hr) {
+  border: 0;
+  border-top: 1px solid var(--_border);
+}
+
+/* Tables scroll horizontally instead of overflowing the element. */
+:where(tv-markdown table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+:where(tv-markdown th) {
+  text-align: left;
+  font-weight: var(--_heading-weight);
+  background: var(--_code-background);
+}
+
+:where(tv-markdown :is(th, td)) {
+  padding: var(--space-4, 4px) var(--space-12, 12px) var(--space-4, 4px) 0;
+  border-bottom: 1px solid var(--_border);
+  /* Words in cells stay whole, so a narrow table scrolls instead of breaking them. */
+  overflow-wrap: break-word;
+}
+
+/* Images. */
+:where(tv-markdown img) {
+  max-width: 100%;
+  height: auto;
+}

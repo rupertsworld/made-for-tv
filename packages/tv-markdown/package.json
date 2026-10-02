@@ -1,0 +1,14 @@
+{
+  "name": "tv-markdown",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build --config vite.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "dompurify": "3.4.16",
+    "marked": "18.0.13"
+  }
+}
