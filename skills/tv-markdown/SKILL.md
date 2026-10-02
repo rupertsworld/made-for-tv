@@ -50,6 +50,12 @@ For text written into the HTML, put a `text/markdown` script inside the element.
 
 Text directly inside `<tv-markdown>` is ignored. Assigning the property takes precedence over the inline script and replaces all children. The `markdown` getter returns the current source.
 
+## Show frontmatter
+
+A document can start with YAML between a first-line `---` and a closing `---` or `...`. The element removes that block from the rendered Markdown. Read `documentView.frontmatter` for the parsed object; it is `null` when frontmatter is absent or invalid.
+
+Add `show-frontmatter` to display a properties panel above the content. It is hidden by default. Adding or removing the attribute later renders the current document again. Invalid YAML appears as raw text in a code block when the panel is shown.
+
 ## Handle links
 
 Ordinary Markdown links have their authored `href`. Links to a heading, such as `[Sources](#sources)`, use normal browser scrolling. Other primary-button clicks dispatch a bubbling, cancelable `linkclick` event before browser navigation. The event is a `MouseEvent` with the original pointer position and modifier keys. It has `href`, `wikilink`, and `anchor` properties.

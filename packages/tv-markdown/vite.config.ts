@@ -12,6 +12,21 @@ const outputDirectory = path.join(repositoryRoot, "skills", "tv-markdown");
 export default defineConfig({
   root: packageDirectory,
   plugins: [
+    {
+      name: "yaml-license-root",
+      generateBundle(_options, bundle) {
+        // YAML's browser folder has a package.json containing only its module
+        // type. Point notice discovery at the package root, which owns LICENSE.
+        for (const output of Object.values(bundle)) {
+          if (output.type !== "chunk") continue;
+          for (const [modulePath, details] of Object.entries(output.modules)) {
+            if (!modulePath.includes("/node_modules/yaml/browser/")) continue;
+            delete output.modules[modulePath];
+            output.modules[modulePath.replace("/node_modules/yaml/browser/", "/node_modules/yaml/")] = details;
+          }
+        }
+      },
+    },
     skillNotices(),
     {
       name: "copy-skill-files",

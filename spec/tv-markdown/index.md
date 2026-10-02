@@ -13,12 +13,14 @@ The element is generic. It does not know where its Markdown comes from or where 
 
 Importing `tv-markdown.js` defines `<tv-markdown>`. The module exports the element class `TvMarkdownElement` and the event class `LinkClickEvent`.
 
-| Kind     | Name                            | Description                                                                                                                                                                                       |
-| -------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Property | `markdown`                      | The Markdown source, as a string. Setting it renders. See [Input](#input).                                                                                                                        |
-| Child    | `<script type="text/markdown">` | Markdown written into the page. See [Input](#input).                                                                                                                                              |
-| Event    | `linkclick`                     | A `LinkClickEvent`, dispatched when a link is clicked with the primary button. Bubbles; cancelable. See [Links](#links).                                                                          |
-| Event    | `render`                        | A plain `Event`, dispatched after each render, including a clear. Does not bubble. Pages that build on the rendered content, such as section navigation from the headings, run in response to it. |
+| Kind      | Name                            | Description                                                                                                                                                                                       |
+| --------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Property  | `markdown`                      | The Markdown source, as a string. Setting it renders. See [Input](#input).                                                                                                                        |
+| Child     | `<script type="text/markdown">` | Markdown written into the page. See [Input](#input).                                                                                                                                              |
+| Attribute | `show-frontmatter`              | Shows the document's frontmatter as a properties panel above the content. See [Frontmatter](#frontmatter).                                                                                        |
+| Property  | `frontmatter`                   | Read-only. The parsed frontmatter of the current document as an object, or `null` when there is none or it cannot be parsed.                                                                      |
+| Event     | `linkclick`                     | A `LinkClickEvent`, dispatched when a link is clicked with the primary button. Bubbles; cancelable. See [Links](#links).                                                                          |
+| Event     | `render`                        | A plain `Event`, dispatched after each render, including a clear. Does not bubble. Pages that build on the rendered content, such as section navigation from the headings, run in response to it. |
 
 `LinkClickEvent` is a `MouseEvent`. It carries the button, pointer position and modifier keys (`metaKey`, `ctrlKey`, `shiftKey`, `altKey`) of the click that caused it, and adds these read-only properties:
 
@@ -45,6 +47,23 @@ Text placed directly inside the element without the script is not read. Assignin
 ### Heading ids
 
 Each heading receives an `id` so that `#section` links can address it. The id follows the GitHub convention: the heading text in lowercase, with characters other than letters, digits, spaces and hyphens removed, and spaces replaced by hyphens. A repeated id receives the suffix `-1`, `-2` and so on, in document order. Links to `#section` within the content scroll to the heading through normal browser behaviour.
+
+## Frontmatter
+
+A document may begin with YAML frontmatter: a first line `---`, YAML, and a closing line `---` or `...`. The element separates it from the Markdown before rendering, so frontmatter never appears as text in the content. Anything else at the start of a document is ordinary Markdown.
+
+- Without the `show-frontmatter` attribute, frontmatter is hidden. The `frontmatter` property still returns it.
+- With the attribute, the element renders a properties panel before the content: a `<dl data-frontmatter>` holding one `<div>` per key, each with a `<dt>` for the key and a `<dd>` for the value, in the order the keys appear.
+- Values render by type, always as text and never as HTML:
+  - strings as text, except that an address beginning `http://` or `https://` renders as an ordinary link and a value that is entirely a wikilink renders as a wikilink, with the same `linkclick` behaviour as in the content;
+  - numbers and dates as written;
+  - `true` and `false` as read-only checkboxes;
+  - `null` and empty values as a muted dash, with `data-empty` on the `<dd>`;
+  - lists as a `<ul>` of items, each rendered by the same rules and shown as a small rounded tag;
+  - nested objects as a one-line `key: value` summary in a `<code>` element.
+- Frontmatter that is not valid YAML is hidden, and `frontmatter` is `null`; with the attribute, the panel shows the raw frontmatter in a code block instead.
+
+The panel is generated by the element after sanitizing, so its structure and attributes cannot come from the Markdown. The YAML parser is bundled into `tv-markdown.js`.
 
 ## Wikilinks
 
@@ -86,6 +105,7 @@ Beyond the copied rules:
 - Wikilinks look the same as ordinary links. Pages that want them to differ select them by `data-wikilink`.
 - Links and wikilinks show a focus outline when focused from the keyboard.
 - Task-list checkboxes hang in the list indent in place of the bullet.
+- The frontmatter properties panel is a muted panel with rounded corners: keys in a muted column capped at 40% of the width, values beside them, and list items as small rounded tags.
 - Built-in colour defaults follow the `color-scheme` in effect for the element, so a page that declares a dark scheme gets dark defaults outside Television.
 - Code blocks and tables scroll horizontally instead of overflowing. Tables display as blocks, and words in table cells stay whole.
 - A nested list has no gap below it inside its parent item.
@@ -99,25 +119,26 @@ The element paints no background of its own; the page surface shows through.
 
 The element exposes the variables below. Each resolves through three layers: the `--tv-markdown-*` variable when the page sets it, otherwise the Television variable, otherwise a built-in default. Inside Television the element therefore matches Television prose and follows the active theme with no configuration; elsewhere the built-in defaults apply. A page overrides a variable by setting it on the element or an ancestor. The stylesheet resolves each variable once, at the top, for example `--_text: var(--tv-markdown-text, var(--color-text, <default>));`. Exact default values live in `tv-markdown.css`.
 
-| Variable                        | Television variable      | Used for                                                                  |
-| ------------------------------- | ------------------------ | ------------------------------------------------------------------------- |
-| `--tv-markdown-text`            | `--color-text`           | body text                                                                 |
-| `--tv-markdown-text-muted`      | `--color-text-muted`     | blockquote text                                                           |
-| `--tv-markdown-link`            | `--color-link`           | link text                                                                 |
-| `--tv-markdown-border`          | `--color-border`         | rules, and table, code block and blockquote borders                       |
-| `--tv-markdown-code-background` | `--color-surface-muted`  | code and table header backgrounds                                         |
-| `--tv-markdown-focus`           | `--outline-focus`        | the focus outline on links, as an `outline` value                         |
-| `--tv-markdown-font`            | `--font-sans`            | body text                                                                 |
-| `--tv-markdown-font-mono`       | `--font-mono`            | code                                                                      |
-| `--tv-markdown-text-size`       | `--text-md`              | body text                                                                 |
-| `--tv-markdown-heading-1-size`  | `--text-3xl`             | `h1`                                                                      |
-| `--tv-markdown-heading-2-size`  | `--text-xl`              | `h2`                                                                      |
-| `--tv-markdown-heading-3-size`  | `--text-lg`              | `h3` to `h6`                                                              |
-| `--tv-markdown-code-size`       | `--text-sm`              | code                                                                      |
-| `--tv-markdown-weight`          | `--font-weight-medium`   | body text                                                                 |
-| `--tv-markdown-heading-weight`  | `--font-weight-semibold` | headings                                                                  |
-| `--tv-markdown-block-space`     | `--space-12`             | space after paragraphs, lists, blockquotes, code blocks, rules and tables |
-| `--tv-markdown-radius`          | `--control-radius`       | corners of code and code blocks                                           |
+| Variable                         | Television variable      | Used for                                                                  |
+| -------------------------------- | ------------------------ | ------------------------------------------------------------------------- |
+| `--tv-markdown-text`             | `--color-text`           | body text                                                                 |
+| `--tv-markdown-text-muted`       | `--color-text-muted`     | blockquote text                                                           |
+| `--tv-markdown-link`             | `--color-link`           | link text                                                                 |
+| `--tv-markdown-border`           | `--color-border`         | rules, and table, code block and blockquote borders                       |
+| `--tv-markdown-code-background`  | `--color-surface-muted`  | code and table header backgrounds                                         |
+| `--tv-markdown-focus`            | `--outline-focus`        | the focus outline on links, as an `outline` value                         |
+| `--tv-markdown-font`             | `--font-sans`            | body text                                                                 |
+| `--tv-markdown-font-mono`        | `--font-mono`            | code                                                                      |
+| `--tv-markdown-text-size`        | `--text-md`              | body text                                                                 |
+| `--tv-markdown-heading-1-size`   | `--text-3xl`             | `h1`                                                                      |
+| `--tv-markdown-heading-2-size`   | `--text-xl`              | `h2`                                                                      |
+| `--tv-markdown-heading-3-size`   | `--text-lg`              | `h3` to `h6`                                                              |
+| `--tv-markdown-code-size`        | `--text-sm`              | code                                                                      |
+| `--tv-markdown-weight`           | `--font-weight-medium`   | body text                                                                 |
+| `--tv-markdown-heading-weight`   | `--font-weight-semibold` | headings                                                                  |
+| `--tv-markdown-block-space`      | `--space-12`             | space after paragraphs, lists, blockquotes, code blocks, rules and tables |
+| `--tv-markdown-radius`           | `--control-radius`       | corners of code and code blocks; the properties panel uses twice this     |
+| `--tv-markdown-panel-background` | `--color-surface-muted`  | the frontmatter properties panel                                          |
 
 The remaining spacing in the copied rules, such as heading margins and list indentation, resolves the matching Television spacing variable directly, with a built-in default, and is not exposed. Line heights are fixed numbers, as in the original. Television prose uses medium weight for its Hind typeface; the built-in default for `--tv-markdown-weight` is normal weight, which suits system fonts.
 

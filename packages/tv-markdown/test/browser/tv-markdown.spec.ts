@@ -67,6 +67,14 @@ test('inline script is dedented, rendered, and replaced with output', async ({ p
     source: '# In the page\n\nA 1 < 2 & 3.', scriptGone: true });
 });
 
+test('an existing show-frontmatter attribute preserves an inline script during upgrade', async ({ page }) => {
+  await page.goto('/packages/tv-markdown/test/browser/late-upgrade.html');
+  await expect(page.locator('tv-markdown dl[data-frontmatter] dt')).toHaveText('title');
+  await expect(page.locator('tv-markdown dl[data-frontmatter] dd')).toHaveText('Inline document');
+  await expect(page.locator('tv-markdown h1')).toHaveText('Content');
+  await expect(page.locator('tv-markdown script[type="text/markdown"]')).toHaveCount(0);
+});
+
 test('inline script works when the element connects before its child is parsed', async ({ page }) => {
   await ready(page);
   const connectedBeforeChild = await page.evaluate(() => {
@@ -295,7 +303,78 @@ test('heading fragments and middle clicks do not dispatch linkclick', async ({ p
   await expect(page.locator('body')).not.toHaveAttribute('data-link-events', /./);
 });
 
-const sampleMarkdown = `# Reading notes
+test('show-frontmatter changes rerender the current document and expose current parsed data', async ({ page }) => {
+  await ready(page);
+  const result = await page.evaluate(() => {
+    const element = document.createElement('tv-markdown') as HTMLElement & {
+      markdown: string;
+      readonly frontmatter: Record<string, unknown> | null;
+    };
+    document.querySelector('#host')!.append(element);
+    const snapshots: Array<{ panel: boolean; title: unknown; heading: string | undefined }> = [];
+    element.addEventListener('render', () => snapshots.push({
+      panel: element.querySelector('dl[data-frontmatter]') !== null,
+      title: element.frontmatter?.title,
+      heading: element.querySelector('h1')?.textContent ?? undefined,
+    }));
+    element.markdown = '---\ntitle: First\n---\n# Body';
+    element.setAttribute('show-frontmatter', '');
+    element.removeAttribute('show-frontmatter');
+    element.markdown = '---\ntitle: Second\n---\n# New body';
+    element.markdown = '# Plain';
+    element.markdown = '';
+    return { snapshots, current: element.frontmatter, source: element.markdown };
+  });
+  expect(result).toEqual({
+    snapshots: [
+      { panel: false, title: 'First', heading: 'Body' },
+      { panel: true, title: 'First', heading: 'Body' },
+      { panel: false, title: 'First', heading: 'Body' },
+      { panel: false, title: 'Second', heading: 'New body' },
+      { panel: false, title: undefined, heading: 'Plain' },
+      { panel: false, title: undefined, heading: undefined },
+    ], current: null, source: '',
+  });
+});
+
+test('frontmatter links dispatch the same linkclick events as content links', async ({ page }) => {
+  await ready(page);
+  await setMarkdown(page, '---\nrelated: "[[notes/topic#part|Topic]]"\nsource: https://example.org/article\n---\n# Content');
+  await page.locator('tv-markdown').evaluate(element => element.setAttribute('show-frontmatter', ''));
+  await page.evaluate(() => {
+    const events: Array<[string | null, string | null]> = [];
+    document.querySelector('tv-markdown')!.addEventListener('linkclick', event => {
+      event.preventDefault();
+      const link = event as MouseEvent & { href: string | null; wikilink: string | null };
+      events.push([link.href, link.wikilink]);
+    });
+    (window as Window & { frontmatterLinks?: typeof events }).frontmatterLinks = events;
+  });
+  const wikilink = page.locator('dl[data-frontmatter] a[data-wikilink]');
+  await wikilink.click();
+  await wikilink.focus();
+  await wikilink.press('Enter');
+  await page.locator('dl[data-frontmatter] a[href]').click();
+  expect(await page.evaluate(() => (window as Window & {
+    frontmatterLinks?: Array<[string | null, string | null]>;
+  }).frontmatterLinks)).toEqual([
+    [null, 'notes/topic#part'], [null, 'notes/topic#part'],
+    ['https://example.org/article', null],
+  ]);
+});
+
+const sampleMarkdown = `---
+status: active
+tags: [agents, research, safety]
+related: ["[[topics/goal-pressure|Goal pressure]]", "[[references/zhong-impossiblebench]]"]
+source: https://example.org/impossiblebench
+updated: 2026-09-24
+reviewed: true
+rating: 4
+owner: null
+details: {pages: 12, format: pdf}
+---
+# Reading notes
 
 Notes on *agent behaviour* and **goal pressure**, with sources linked as ordinary links such as [ImpossibleBench](https://example.org/impossiblebench) and as wikilinks such as [[topics/goal-pressure]] or [[jane|Jane]]. A link to a heading: [open questions](#open-questions).
 
@@ -352,12 +431,15 @@ interface FrameComparison {
 test('the built element matches the frame structure and computed prose styles', async ({ page }) => {
   await ready(page);
   for (const variant of [
-    { scheme: 'light', width: 'wide', overrides: 'false' },
-    { scheme: 'dark', width: 'narrow', overrides: 'false' },
-    { scheme: 'light', width: 'wide', overrides: 'true' },
+    { scheme: 'light', width: 'wide', overrides: 'false', frontmatter: 'shown' },
+    { scheme: 'dark', width: 'narrow', overrides: 'false', frontmatter: 'shown' },
+    { scheme: 'light', width: 'wide', overrides: 'true', frontmatter: 'shown' },
+    { scheme: 'light', width: 'wide', overrides: 'false', frontmatter: 'hidden' },
   ]) {
     const result = await page.evaluate(({ frameBodyTemplate, frameStyle, markdown, variant }) => {
-      const frameBody = frameBodyTemplate.replaceAll('{{ scheme }}', variant.scheme)
+      const frameBody = frameBodyTemplate.replace(/\{% if frontmatter == "shown" %\}([\s\S]*?)\{% endif %\}/g,
+        (_, content: string) => variant.frontmatter === 'shown' ? content : '')
+        .replaceAll('{{ scheme }}', variant.scheme)
         .replaceAll('{{ width }}', variant.width).replaceAll('{{ overrides }}', variant.overrides);
       const iframe = document.createElement('iframe');
       iframe.id = 'frame-reference';
@@ -373,6 +455,7 @@ test('the built element matches the frame structure and computed prose styles', 
       actualPage.dataset.width = variant.width;
       actualPage.dataset.overrides = variant.overrides;
       const actual = document.createElement('tv-markdown') as HTMLElement & { markdown: string };
+      if (variant.frontmatter === 'shown') actual.setAttribute('show-frontmatter', '');
       actualPage.append(actual);
       document.body.append(actualPage);
       actual.markdown = markdown;
@@ -400,7 +483,10 @@ test('the built element matches the frame structure and computed prose styles', 
               overflowX: style.overflowX, maxWidth: style.maxWidth,
               width: `${Math.round(rect.width)}px` };
           };
-          const selectors = ['', 'h1', 'h2', 'h3', 'p', 'a[href]', 'a[data-wikilink]',
+          const selectors = ['', 'dl[data-frontmatter]', 'dl[data-frontmatter] dt',
+            'dl[data-frontmatter] dd', 'dl[data-frontmatter] dd[data-empty]',
+            'dl[data-frontmatter] li', 'dl[data-frontmatter] code',
+            'h1', 'h2', 'h3', 'p', 'a[href]', 'a[data-wikilink]',
             'ul', 'ol', 'li:has(> input)', 'input', 'blockquote', 'code', 'pre', 'table', 'th', 'img'];
           resolve({ actualShape: shape(actual), frameShape: shape(reference),
             actualTextByElement: textByElement(actual),

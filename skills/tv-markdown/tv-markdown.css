@@ -33,6 +33,7 @@ tv-markdown {
   --_heading-weight: var(--tv-markdown-heading-weight, var(--font-weight-semibold, 600));
   --_block-space: var(--tv-markdown-block-space, var(--space-12, 12px));
   --_radius: var(--tv-markdown-radius, var(--control-radius, 6px));
+  --_panel-background: var(--tv-markdown-panel-background, var(--color-surface-muted, light-dark(oklch(97% 0 0), oklch(26.9% 0 0))));
 }
 
 /* The element and body text. */
@@ -183,4 +184,71 @@ tv-markdown {
 :where(tv-markdown img) {
   max-width: 100%;
   height: auto;
+}
+
+/* Frontmatter properties: a muted, rounded panel above the content, shown only
+   when the element has the show-frontmatter attribute. Keys sit in a narrow
+   muted column; lists render as small rounded tags. */
+:where(tv-markdown > dl[data-frontmatter]) {
+  display: grid;
+  grid-template-columns: fit-content(40%) minmax(0, 1fr);
+  gap: var(--space-6, 6px) var(--space-16, 16px);
+  margin: 0 0 var(--space-16, 16px);
+  padding: var(--space-12, 12px) var(--space-16, 16px);
+  background: var(--_panel-background);
+  border-radius: calc(var(--_radius) * 2);
+  font-size: calc(var(--_text-size) * 0.93);
+  line-height: 1.45;
+}
+
+:where(tv-markdown > dl[data-frontmatter] > div) {
+  display: contents;
+}
+
+:where(tv-markdown > dl[data-frontmatter] dt) {
+  color: var(--_text-muted);
+  overflow-wrap: normal;
+}
+
+:where(tv-markdown > dl[data-frontmatter] dd) {
+  margin: 0;
+  min-width: 0;
+}
+
+:where(tv-markdown > dl[data-frontmatter] dd[data-empty]) {
+  color: var(--_text-muted);
+}
+
+:where(tv-markdown > dl[data-frontmatter] ul) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4, 4px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:where(tv-markdown > dl[data-frontmatter] li) {
+  margin: 0;
+  padding: 1px var(--space-8, 8px);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--_text) 8%, transparent);
+}
+
+/* A link inside a tag keeps its underline close to the text and softer, so it
+   sits inside the rounded shape rather than on its edge. */
+:where(tv-markdown > dl[data-frontmatter] li > a) {
+  text-underline-offset: 1px;
+  text-decoration-color: color-mix(in oklch, currentColor 45%, transparent);
+}
+
+:where(tv-markdown > dl[data-frontmatter] code) {
+  background: none;
+  padding: 0;
+  color: var(--_text-muted);
+}
+
+:where(tv-markdown > dl[data-frontmatter] input[type="checkbox"]) {
+  margin: 0;
+  vertical-align: -2px;
 }

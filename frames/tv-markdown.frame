@@ -5,6 +5,7 @@ params:
   scheme: { enum: [light, dark], default: light }
   width: { enum: [wide, narrow], default: wide }
   overrides: { type: boolean, default: false }
+  frontmatter: { enum: [shown, hidden], default: shown }
 imports:
   - ../spec/tv-markdown/style.css
 style: |
@@ -21,7 +22,18 @@ style: |
   }
 ---
 <div class="page" data-scheme="{{ scheme }}" data-width="{{ width }}" data-overrides="{{ overrides }}">
-<tv-markdown>
+<tv-markdown{% if frontmatter == "shown" %} show-frontmatter{% endif %}>
+{% if frontmatter == "shown" %}<dl data-frontmatter aria-label="Properties">
+<div><dt>status</dt><dd>active</dd></div>
+<div><dt>tags</dt><dd><ul><li>agents</li><li>research</li><li>safety</li></ul></dd></div>
+<div><dt>related</dt><dd><ul><li><a data-wikilink="topics/goal-pressure" tabindex="0" role="link">Goal pressure</a></li><li><a data-wikilink="references/zhong-impossiblebench" tabindex="0" role="link">references/zhong-impossiblebench</a></li></ul></dd></div>
+<div><dt>source</dt><dd><a href="https://example.org/impossiblebench">https://example.org/impossiblebench</a></dd></div>
+<div><dt>updated</dt><dd>2026-09-24</dd></div>
+<div><dt>reviewed</dt><dd><input type="checkbox" disabled checked></dd></div>
+<div><dt>rating</dt><dd>4</dd></div>
+<div><dt>owner</dt><dd data-empty>—</dd></div>
+<div><dt>details</dt><dd><code>pages: 12, format: pdf</code></dd></div>
+</dl>{% endif %}
 <h1 id="reading-notes">Reading notes</h1>
 <p>Notes on <em>agent behaviour</em> and <strong>goal pressure</strong>, with sources linked as ordinary links such as <a href="https://example.org/impossiblebench">ImpossibleBench</a> and as wikilinks such as <a data-wikilink="topics/goal-pressure" tabindex="0" role="link">topics/goal-pressure</a> or <a data-wikilink="jane" tabindex="0" role="link">Jane</a>. A link to a heading: <a href="#open-questions">open questions</a>.</p>
 <h2 id="sources">Sources</h2>

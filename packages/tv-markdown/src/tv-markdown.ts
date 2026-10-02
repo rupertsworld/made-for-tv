@@ -1,5 +1,6 @@
 /** The light DOM custom element and its link activation event. */
 import { normalizeInlineMarkdown, renderMarkdown } from './markdown';
+import { createFrontmatterPanel, parseFrontmatter } from './frontmatter';
 
 /** A cancellable link activation that keeps the originating pointer or key modifiers. */
 export class LinkClickEvent extends MouseEvent {
@@ -39,7 +40,9 @@ export class LinkClickEvent extends MouseEvent {
 /** Render Markdown supplied as a property or a child text/markdown script. */
 export class TvMarkdownElement extends HTMLElement {
   #source = '';
+  #frontmatter: Record<string, unknown> | null = null;
   #propertyAssigned = false;
+  #hasRendered = false;
   #waitingForParse = false;
   #renderedNodes: Node[] = [];
 
@@ -49,8 +52,18 @@ export class TvMarkdownElement extends HTMLElement {
     this.addEventListener('keydown', this.#onKeyDown);
   }
 
+  static get observedAttributes(): string[] { return ['show-frontmatter']; }
+
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
+    if (name === 'show-frontmatter' && this.#hasRendered &&
+        (oldValue === null) !== (newValue === null)) this.#render();
+  }
+
   /** The current Markdown source; assigning it renders or clears the element. */
   get markdown(): string { return this.#source; }
+
+  /** The parsed frontmatter of the current document, or null if absent or invalid. */
+  get frontmatter(): Record<string, unknown> | null { return this.#frontmatter; }
 
   set markdown(value: string | null | undefined) {
     this.#propertyAssigned = true;
@@ -96,8 +109,14 @@ export class TvMarkdownElement extends HTMLElement {
   }
 
   #render(): void {
-    if (this.#source) this.replaceChildren(renderMarkdown(this.#source));
-    else this.replaceChildren();
+    const parsed = parseFrontmatter(this.#source);
+    this.#frontmatter = parsed.data;
+    const panel = this.hasAttribute('show-frontmatter') ? createFrontmatterPanel(parsed) : null;
+    const nodes: Node[] = [];
+    if (panel) nodes.push(panel);
+    if (parsed.markdown) nodes.push(renderMarkdown(parsed.markdown));
+    this.replaceChildren(...nodes);
+    this.#hasRendered = true;
     this.#renderedNodes = [...this.childNodes];
     this.dispatchEvent(new Event('render'));
   }

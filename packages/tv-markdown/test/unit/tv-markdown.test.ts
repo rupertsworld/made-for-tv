@@ -30,6 +30,80 @@ describe('inline Markdown', () => {
   });
 });
 
+describe('frontmatter', () => {
+  it('separates first-line YAML with either closing fence and hides it by default', () => {
+    const element = render('---\r\ntitle: Reading notes\r\ncount: 4\r\nupdated: 2026-09-24\r\n...\r\n# Content');
+    expect((element as HTMLElement & { frontmatter: unknown }).frontmatter).toEqual({
+      title: 'Reading notes', count: 4, updated: '2026-09-24',
+    });
+    expect(element.querySelector('[data-frontmatter]')).toBeNull();
+    expect(element.querySelector('h1')?.textContent).toBe('Content');
+    expect(element.textContent).not.toContain('title: Reading notes');
+
+    const notFirstLine = render('Before\n---\ntitle: A title\n---');
+    expect((notFirstLine as HTMLElement & { frontmatter: unknown }).frontmatter).toBeNull();
+    expect(notFirstLine.textContent).toContain('title: A title');
+
+    const unclosed = render('---\ntitle: A title\n# Content');
+    expect((unclosed as HTMLElement & { frontmatter: unknown }).frontmatter).toBeNull();
+    expect(unclosed.textContent).toContain('title: A title');
+  });
+
+  it('renders typed values in a properties panel without interpreting authored HTML', () => {
+    const element = render(`---
+"<img src=x onerror=alert(1)>": "<b>literal</b>"
+source: https://example.org/article
+related: "[[topics/goal-pressure|Goal pressure]]"
+tags: [agents, "[[jane]]"]
+count: 1.50
+updated: 2026-09-24
+reviewed: true
+rejected: false
+owner: null
+blank: ""
+details: {pages: 12, format: pdf}
+---
+# Content`);
+    element.setAttribute('show-frontmatter', '');
+    const rows = [...element.querySelectorAll('dl[data-frontmatter] > div')];
+    expect(rows.map(row => row.querySelector('dt')?.textContent)).toEqual([
+      '<img src=x onerror=alert(1)>', 'source', 'related', 'tags', 'count',
+      'updated', 'reviewed', 'rejected', 'owner', 'blank', 'details',
+    ]);
+    expect(element.querySelector('dl[data-frontmatter]')?.getAttribute('aria-label')).toBe('Properties');
+    expect(element.querySelector('dl img, dl b')).toBeNull();
+    expect(rows[0].querySelector('dd')?.textContent).toBe('<b>literal</b>');
+    expect(rows[1].querySelector('dd a')?.getAttribute('href')).toBe('https://example.org/article');
+    expect(rows[2].querySelector('dd a')?.getAttribute('data-wikilink')).toBe('topics/goal-pressure');
+    expect(rows[2].querySelector('dd a')?.textContent).toBe('Goal pressure');
+    expect([...rows[3].querySelectorAll('li')].map(item => item.textContent)).toEqual(['agents', 'jane']);
+    expect(rows[3].querySelector('li a')?.getAttribute('data-wikilink')).toBe('jane');
+    expect(rows[4].querySelector('dd')?.textContent).toBe('1.50');
+    expect(rows[5].querySelector('dd')?.textContent).toBe('2026-09-24');
+    expect([...element.querySelectorAll('dl input')].map(input => [
+      (input as HTMLInputElement).checked, (input as HTMLInputElement).disabled,
+    ])).toEqual([[true, true], [false, true]]);
+    expect(rows[8].querySelector('dd')?.hasAttribute('data-empty')).toBe(true);
+    expect(rows[8].querySelector('dd')?.textContent).toBe('—');
+    expect(rows[9].querySelector('dd')?.hasAttribute('data-empty')).toBe(true);
+    expect(rows[10].querySelector('code')?.textContent).toBe('pages: 12, format: pdf');
+    expect(element.querySelector('h1')?.textContent).toBe('Content');
+  });
+
+  it('shows invalid YAML as raw code only when requested, and resets the property on later renders', () => {
+    const element = render('---\ntags: [one, <script>alert(1)</script>\n---\n# Content');
+    expect((element as HTMLElement & { frontmatter: unknown }).frontmatter).toBeNull();
+    expect(element.querySelector('[data-frontmatter]')).toBeNull();
+    element.setAttribute('show-frontmatter', '');
+    expect(element.querySelector('dl[data-frontmatter] pre code')?.textContent)
+      .toBe('tags: [one, <script>alert(1)</script>');
+    expect(element.querySelector('script')).toBeNull();
+    (element as HTMLElement & { markdown: string }).markdown = '# Replacement';
+    expect((element as HTMLElement & { frontmatter: unknown }).frontmatter).toBeNull();
+    expect(element.querySelector('[data-frontmatter]')).toBeNull();
+  });
+});
+
 describe('heading ids', () => {
   it('uses GitHub-style slugs and numbers repeated ids in document order', () => {
     const element = render('# Hello, World!\n\n## Hello *World*!\n\n### Hello, World!\n\n## A + B & C?');

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "dompurify": "3.4.16",
-    "marked": "18.0.13"
+    "marked": "18.0.13",
+    "yaml": "2.9.1"
   }
 }
