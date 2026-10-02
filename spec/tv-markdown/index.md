@@ -168,7 +168,6 @@ The built skill, in `skills/tv-markdown/`, contains:
 
 - `SKILL.md`: when to use the skill, how to load it (copy `tv-markdown.js` and `tv-markdown.css` next to the artifact `index.html`), both input forms, wikilinks, handling `linkclick`, [Interactivity](#interactivity) with its conditions, and short examples;
 - `tv-markdown.js`, with the parser and sanitizer bundled;
-- `tv-markdown.css`, a copy of [`style.css`](style.css);
-- third-party notices for the bundled code.
+- `tv-markdown.css`, a copy of [`style.css`](style.css).
 
 The source package, in `packages/tv-markdown/`, holds the element code, `SKILL.md` and tests: unit tests for indentation removal, heading ids, wikilink parsing and sanitizing, and browser tests for rendering, the precedence of the property over inline content, `linkclick` and `render`. The repository layout and build are specified in [the repository specification](../index.md).

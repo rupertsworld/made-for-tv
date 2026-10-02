@@ -32,8 +32,9 @@ Each skill has one name, used for its specification folder, package folder, pack
 
 - the JavaScript, built by Vite as one ES module named after the skill, with its dependencies bundled;
 - files the specification names for shipping, copied unchanged, such as `spec/tv-markdown/style.css` as `tv-markdown.css`;
-- `SKILL.md`, copied from the package;
-- `THIRD-PARTY-NOTICES.txt`, listing the bundled third-party code and its licences.
+- `SKILL.md`, copied from the package.
+
+Third-party licence notices for bundled code are deferred until the skills are distributed beyond Rupert.
 
 A built skill is self-contained. An agent installs it by copying or linking `skills/<skill>/` into its skills directory, and an artifact copies the JavaScript and CSS next to its `index.html`.
 
