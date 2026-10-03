@@ -5,6 +5,11 @@
       "type": "frame",
       "path": "frames/tv-markdown.frame",
       "title": "tv-markdown"
+    },
+    {
+      "type": "frame",
+      "path": "frames/tv-book-catalog.frame",
+      "title": "tv-book-catalog"
     }
   ]
 }

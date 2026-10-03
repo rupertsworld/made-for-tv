@@ -36,7 +36,12 @@ export function skillNotices() {
       }
 
       if (packages.size === 0) {
-        throw new Error("No bundled third-party code found for skill notices");
+        this.emitFile({
+          type: "asset",
+          fileName: "THIRD-PARTY-NOTICES.txt",
+          source: "TV-SKILLS THIRD-PARTY NOTICES\n\nNo third-party code is bundled in this skill.\n",
+        });
+        return;
       }
 
       const header = "TV-SKILLS THIRD-PARTY NOTICES\n\n"

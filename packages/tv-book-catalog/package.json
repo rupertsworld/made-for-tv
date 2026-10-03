@@ -1,0 +1,10 @@
+{
+  "name": "tv-book-catalog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build --config vite.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

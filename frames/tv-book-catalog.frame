@@ -1,0 +1,70 @@
+---
+title: tv-book-catalog
+description: Book cards and a full inline record, using spec/tv-book-catalog/style.css. Press Tab to inspect focus.
+params:
+  scheme: { enum: [light, dark], default: light }
+  width: { enum: [wide, narrow], default: wide }
+  view: { enum: [catalog, detail], default: catalog }
+  status: { enum: [ready, empty, loading, error], default: ready }
+  overrides: { type: boolean, default: false }
+imports:
+  - ../spec/tv-book-catalog/style.css
+style: |
+  body { margin: 0; }
+  .page { min-height: 100vh; box-sizing: border-box; padding: 24px; color-scheme: light; background: light-dark(white, #202020); color: light-dark(#222, #eee); font-family: system-ui, sans-serif; }
+  .page[data-scheme="dark"] { color-scheme: dark; }
+  .page[data-width="wide"] .content { max-width: 900px; }
+  .page[data-width="narrow"] .content { max-width: 240px; }
+  .page[data-overrides="true"] { --tv-book-catalog-font: Georgia, serif; --tv-book-catalog-gap: 18px; --tv-book-catalog-link: light-dark(#8a2244, #ffb3cd); }
+---
+<div class="page" data-scheme="{{ scheme }}" data-width="{{ width }}" data-overrides="{{ overrides }}">
+<div class="content">
+<h1 tabindex="-1">Books</h1>
+{% if view == "catalog" %}
+<tv-book-catalog>
+<div class="bc-content"{% if status == "loading" %} aria-busy="true"{% endif %}>
+{% if status == "ready" %}
+<!-- catalog-ready -->
+<ul class="bc-grid">
+<li class="bc-card"><button type="button" class="bc-activate" data-book-id="essays" aria-label="Collected Essays — A. Writer, B. Writer"><div class="bc-cover" aria-hidden="true" style="--_cover-hue: 290"><span class="bc-cover-title">Collected Essays</span><span class="bc-cover-authors">A. Writer, B. Writer</span></div><span class="bc-title">Collected Essays</span><span class="bc-authors">A. Writer, B. Writer</span><span class="bc-description">A complete description with line breaks.
+&lt;b&gt;Markup stays plain text.&lt;/b&gt;</span><span class="bc-caption">Genre: Essays</span><span class="bc-caption">Rating: 4.2 / 5</span></button></li>
+<li class="bc-card"><button type="button" class="bc-activate" data-book-id="unknown" aria-label="An Unknown Author — Unknown author"><div class="bc-cover" aria-hidden="true" style="--_cover-hue: 330"><span class="bc-cover-title">An Unknown Author</span><span class="bc-cover-authors">Unknown author</span></div><span class="bc-title">An Unknown Author</span><span class="bc-authors">Unknown author</span><span class="bc-description">A book with unknown authors.</span></button></li>
+<li class="bc-card"><button type="button" class="bc-activate" data-book-id="long" aria-label="A Complete Title That Wraps Across Several Lines — An Author With a Long Name"><div class="bc-cover" aria-hidden="true" style="--_cover-hue: 330"><span class="bc-cover-title">A Complete Title That Wraps Across Several Lines</span><span class="bc-cover-authors">An Author With a Long Name</span></div><span class="bc-title">A Complete Title That Wraps Across Several Lines</span><span class="bc-authors">An Author With a Long Name</span><span class="bc-description">A brief description that wraps across several lines.</span></button></li>
+</ul>
+<!-- /catalog-ready -->
+{% endif %}
+</div>
+<p class="bc-message" role="status">{% if status == "loading" %}Loading books…{% elsif status == "empty" %}No books to show.{% endif %}</p>
+<p class="bc-message" role="alert">{% if status == "error" %}Could not load books.{% endif %}</p>
+</tv-book-catalog>
+{% else %}
+<tv-book-detail>
+<div class="bc-content"{% if status == "loading" %} aria-busy="true"{% endif %}>
+{% if status == "ready" %}
+<!-- detail-ready -->
+<article class="bc-record">
+<div class="bc-cover" aria-hidden="true" style="--_cover-hue: 290"><span class="bc-cover-title">Collected Essays</span><span class="bc-cover-authors">A. Writer, B. Writer</span></div>
+<div class="bc-record-text">
+<h2 class="bc-detail-title" tabindex="-1">Collected Essays</h2>
+<p class="bc-authors">A. Writer, B. Writer</p>
+<p class="bc-description">A complete description with line breaks.
+&lt;b&gt;Markup stays plain text.&lt;/b&gt;</p>
+<dl class="bc-metadata">
+<div><dt>ID</dt><dd>essays</dd></div>
+<div><dt>Publication date</dt><dd>2024-05</dd></div>
+<div><dt>Page count</dt><dd>0</dd></div>
+<div><dt>Genre</dt><dd>Essays</dd></div>
+<div><dt>Rating</dt><dd>4.2 / 5</dd></div>
+<div><dt>URL</dt><dd><a class="bc-source" href="https://example.org/books/essays">example.org</a></dd></div>
+</dl>
+</div>
+</article>
+<!-- /detail-ready -->
+{% endif %}
+</div>
+<p class="bc-message" role="status">{% if status == "loading" %}Loading book…{% elsif status == "empty" %}No book selected.{% endif %}</p>
+<p class="bc-message" role="alert">{% if status == "error" %}Could not load book.{% endif %}</p>
+</tv-book-detail>
+{% endif %}
+</div>
+</div>
