@@ -10,6 +10,11 @@
       "type": "frame",
       "path": "frames/tv-book-catalog.frame",
       "title": "tv-book-catalog"
+    },
+    {
+      "type": "frame",
+      "path": "frames/tv-code.frame",
+      "title": "tv-code"
     }
   ]
 }
