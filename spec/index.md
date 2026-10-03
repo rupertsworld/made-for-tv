@@ -50,4 +50,4 @@ Frames live in `frames/`, named after the skill they show. A frame imports the s
 
 ## Git
 
-The repository is on GitHub as `rupertsworld/tv-skills`, private for now; its history will be flattened before it is made public. `node_modules/` and test output are ignored; `skills/` is not.
+`node_modules/` and test output are ignored; `skills/` is not.
