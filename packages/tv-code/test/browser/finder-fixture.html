@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>File finder browser tests</title>
+  <link rel="stylesheet" href="/spec/tv-code/style.css">
+  <style>tv-code { color-scheme: light dark; }</style>
+  <script type="module">
+    import { Finder } from "/packages/tv-code/src/finder.ts";
+
+    const viewer = document.querySelector("tv-code");
+    const events = [];
+    let files = [];
+    let recent = [];
+    let pending = 0;
+    const finder = new Finder({
+      files: () => files,
+      recent: () => recent,
+      pending: () => pending,
+      onOpen: (path, line) => events.push({ type: "open", path, line }),
+      onGoToLine: line => events.push({ type: "line", line }),
+      onClose: () => events.push({ type: "close" }),
+    });
+    viewer.append(finder.element);
+    window.finderHarness = {
+      finder,
+      events,
+      setFiles(value) { files = value; finder.update(); },
+      setRecent(value) { recent = value; finder.update(); },
+      setPending(value) { pending = value; finder.update(); },
+    };
+  </script>
+</head>
+<body>
+  <button id="before">Before finder</button>
+  <tv-code></tv-code>
+</body>
+</html>
