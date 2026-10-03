@@ -141,7 +141,6 @@ The built skill in `skills/tv-book-catalog/` contains:
 - `SKILL.md`: when to use the skill, loading both assets next to the artifact `index.html`, the record contract, both elements, request events, state handling, safe content and URLs, and short examples of page-owned navigation and focus restoration;
 - `tv-book-catalog.js`: one self-contained ES module defining both elements, with no runtime dependencies;
 - `tv-book-catalog.css`: the unchanged specification stylesheet for both elements;
-- `THIRD-PARTY-NOTICES.txt`: the file required by the repository build contract; no bundled third-party code is required by this skill.
 
 The [repository specification](../index.md) defines package layout, tools, build output and testing conventions. The [tv-markdown specification](../tv-markdown/index.md) supplies the existing convention for documenting a light-DOM artifact element, page-owned behaviour and copied specification CSS; it is not a runtime dependency. Neither `tv-markdown` nor another Television skill is needed to render descriptions or navigate between these two views.
 

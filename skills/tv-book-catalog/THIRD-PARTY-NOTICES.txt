@@ -1,3 +1,0 @@
-TV-SKILLS THIRD-PARTY NOTICES
-
-No third-party code is bundled in this skill.

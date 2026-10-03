@@ -1,9 +1,7 @@
 /** Light-DOM contract tests for record data, state transitions and safe destinations. */
 // @vitest-environment jsdom
-import path from 'node:path';
 import { beforeEach, expect, it } from 'vitest';
 import { TvBookCatalogElement, TvBookDetailElement, type Book } from '../../src/tv-book-catalog';
-import { skillNotices } from '../../../../scripts/skill-notices.mjs';
 
 const book: Book = Object.freeze({ id: 'odd " ] # <id>', title: '<img src=x onerror=alert(1)>',
   authors: Object.freeze(['First', 'Second']), description: '<b>Not HTML</b>\nSecond line',
@@ -197,19 +195,4 @@ it('detail renders and clears synchronously after each data and state assignment
   expect(snapshots.slice(1)).toEqual(['No book selected.', 'No book selected.',
     'Loading book…', '<script>Plain message</script>']);
   expect(detail.querySelector('script')).toBeNull();
-});
-
-it('emits the required notice for an empty module graph and preserves bundled dependency licenses', () => {
-  const outputs: { fileName: string; source: string }[] = [];
-  const plugin = skillNotices();
-  const context = { emitFile: (asset: { fileName: string; source: string }) => outputs.push(asset) };
-  plugin.generateBundle.call(context, {}, {});
-  expect(outputs[0]).toMatchObject({ fileName: 'THIRD-PARTY-NOTICES.txt' });
-  expect(outputs[0].source).toContain('No third-party code is bundled');
-  plugin.generateBundle.call(context, {}, { entry: { type: 'chunk', modules: {
-    [path.resolve('node_modules/marked/lib/marked.esm.js')]: {},
-  } } });
-  expect(outputs[1].source).toContain('marked@');
-  expect(outputs[1].source).toContain('MIT');
-  expect(outputs[1].source).not.toContain('No third-party code is bundled');
 });

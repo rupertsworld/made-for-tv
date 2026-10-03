@@ -40,11 +40,9 @@ async function isolate(page: Page): Promise<void> {
   });
 }
 
-test('ships unchanged CSS, a standalone module and a no-dependencies notice', async ({ page }) => {
+test('ships unchanged CSS and a standalone module', async ({ page }) => {
   expect(readFileSync('skills/tv-book-catalog/tv-book-catalog.css', 'utf8'))
     .toBe(readFileSync('spec/tv-book-catalog/style.css', 'utf8'));
-  expect(readFileSync('skills/tv-book-catalog/THIRD-PARTY-NOTICES.txt', 'utf8'))
-    .toContain('No third-party code is bundled');
   await ready(page);
   expect(await page.evaluate(async url => {
     const first = customElements.get('tv-book-catalog');
