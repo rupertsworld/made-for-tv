@@ -1,6 +1,7 @@
 /** Chromium tests exercise shipped assets, native controls and page-owned history/focus. */
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import template from '../../../../spec/tv-book-catalog/templates/tv-book-catalog';
 import type { Book, TvBookCatalogElement, TvBookDetailElement } from '../../src/tv-book-catalog';
 
 declare global {
@@ -40,9 +41,9 @@ async function isolate(page: Page): Promise<void> {
   });
 }
 
-test('ships unchanged CSS and a standalone module', async ({ page }) => {
+test('ships the composed CSS and a standalone module', async ({ page }) => {
   expect(readFileSync('skills/tv-book-catalog/tv-book-catalog.css', 'utf8'))
-    .toBe(readFileSync('spec/tv-book-catalog/style.css', 'utf8'));
+    .toBe([...new Set(template.style)].join('\n'));
   await ready(page);
   expect(await page.evaluate(async url => {
     const first = customElements.get('tv-book-catalog');

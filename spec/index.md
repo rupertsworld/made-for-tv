@@ -6,23 +6,32 @@
 
 ```text
 spec/
-  index.md             this specification
-  <skill>/             the specification of one skill: index.md and the files it names
+  index.md, types.ts         repository specification and Template type
+  tv-markdown/               index.md and style.css
+  tv-book-catalog/
+    index.md
+    templates/               tv-book-catalog.ts, grid.ts, card.ts, cover.ts, base.ts
 packages/
-  <skill>/             the source package of one skill
-frames/
-  frameset.json        Frameset configuration
-  <skill>.frame        frames that show a skill
+  <skill>/                   the source package of one skill
+storybook/
+  main.ts, preview.ts        viewer configuration
+  helpers.ts                 joins templates and demo pages
+  sample-books.ts            book data used by stories
+  sample-markdown.ts         rendered HTML used to show the Markdown CSS
+  stories/
+    *.stories.ts             Storybook views of specifications and parts
+test/                       repository-wide unit tests, including helpers.test.ts
 skills/
-  <skill>/             the built skill
-package.json           the root workspace
+  <skill>/                   the built skill
+package.json                 the root workspace
+tsconfig.spec.json           typechecks templates, Storybook and root tests
 ```
 
 Each skill has one name, used for its specification folder, package folder, package name, built folder and main files. For `tv-markdown` these are `spec/tv-markdown/`, `packages/tv-markdown/`, the package `tv-markdown`, `skills/tv-markdown/`, `tv-markdown.js` and `tv-markdown.css`.
 
 ## Packages
 
-- The root `package.json` declares `packages/*` as npm workspaces and holds the development tools shared by every package: TypeScript, Vite, Vitest, Playwright and Frameset. The repository uses Node 24 and npm 11.
+- The root `package.json` declares `packages/*` as npm workspaces and holds the development tools shared by every package: TypeScript, Vite, Vitest, Playwright and Storybook. The repository uses Node 24 and npm 11.
 - Each skill is one private package, named after the skill without a scope. It contains `package.json` with a `build` script, `SKILL.md`, the TypeScript source in `src/`, the tests in `test/`, and its build configuration.
 - Code bundled into a skill, such as a Markdown parser, is a dependency of that package. Tools are development dependencies of the root.
 
@@ -31,7 +40,7 @@ Each skill has one name, used for its specification folder, package folder, pack
 `npm run build` at the root builds every package. A package build replaces `skills/<skill>/` with:
 
 - the JavaScript, built by Vite as one ES module named after the skill, with its dependencies bundled;
-- files the specification names for shipping, copied unchanged, such as `spec/tv-markdown/style.css` as `tv-markdown.css`;
+- the element CSS: `spec/tv-markdown/style.css` copied unchanged, or the distinct CSS strings from the default export of `spec/tv-book-catalog/templates/tv-book-catalog.ts` joined in order;
 - `SKILL.md`, copied from the package.
 
 Third-party licence notices for bundled code are deferred until the skills are distributed beyond Rupert.
@@ -42,11 +51,17 @@ A built skill is self-contained. An agent installs it by copying or linking `ski
 
 ## Tests
 
-`npm test` at the root runs the TypeScript checks, the unit tests (Vitest) and the browser tests (Playwright with Chromium) of every package. Browser tests load the built files in `skills/<skill>/`, so they test what ships.
+`npm test` at the root runs the TypeScript checks, the unit tests (Vitest) and the browser tests (Playwright with Chromium) of every package. The root TypeScript check includes the templates, Storybook code and tests under `test/`. Browser tests load the built files in `skills/<skill>/`, so they test what ships.
 
-## Frames
+## Specifications and Storybook
 
-Frames live in `frames/`, named after the skill they show. A frame imports the specification files it shows, such as `../spec/tv-markdown/style.css`, so it always renders the specified styling rather than a copy. `npm run frames` starts Frameset from `frames/`, where `frameset.json` is.
+The form of a skill specification follows who produces its markup. For `tv-markdown`, the Marked library transforms Markdown. Its output and behaviour are specified in prose in `spec/tv-markdown/index.md` and tested by the package. `spec/tv-markdown/style.css` specifies the element styling and is copied into the built skill. Storybook shows that stylesheet on static sample HTML from `storybook/sample-markdown.ts`; the story does not load production code.
+
+The book catalog builds its own markup, so its specification adds templates. Each template default-exports `{ options, style, render }` and checks that object against the shared `Template<Args>` type in `spec/types.ts`. Options describe select or boolean settings that change element markup; the first value in each list is the default. Style is a list of element CSS strings, and render returns only element markup. Templates are separate specification files; production source does not import them. Package build configuration joins the distinct strings in the element template style list to write the shipped CSS. Browser tests import the templates and compare their markup and computed styles with the built elements.
+
+The book catalog templates are under `spec/tv-book-catalog/templates/`. The grid calls `card.render`; the card and the detail record call `cover.render`. `base.ts` exports shared CSS only. Each parent puts child styles before its own CSS. Repeated strings are removed when the CSS is built or adopted in Storybook, so the cover rules occur once in the combined sheet. Templates require book data as `render` arguments. `storybook/sample-books.ts` supplies that data to the stories; browser comparisons use their own fixtures. Options contain only display settings. The repository-wide test under `test/` checks that templates import only other templates, `base.ts`, or the shared type with `import type`, and stay out of production source.
+
+Each story defines a demo page object with `options`, `style` and `render(args, element)`. The page controls scheme, width and overrides as needed and wraps the element markup. `storybook/helpers.ts` uses the first option values as defaults and builds Storybook controls. Book stories pass sample book data to their templates. The Markdown story supplies a template-shaped object locally, using the raw `style.css` text and static sample HTML; its frontmatter option changes which sample markup is shown. On every render the helper adopts one constructable stylesheet for each distinct CSS string from the element and page, replacing sheets from the previous story. It caches sheets for later renders. `npm run storybook` opens the viewer using the configuration in `storybook/`. A story also renders alone at `iframe.html?id=<story-id>&args=<arguments>`.
 
 ## Git
 

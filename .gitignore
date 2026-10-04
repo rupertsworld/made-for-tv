@@ -3,3 +3,4 @@ test-results/
 playwright-report/
 .vite/
 coverage/
+docs/storybook-frames-experiment/parity/

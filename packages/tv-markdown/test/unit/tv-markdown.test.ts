@@ -15,6 +15,15 @@ beforeEach(() => {
 });
 
 describe('inline Markdown', () => {
+  it('ignores text directly inside the element when there is no Markdown script', () => {
+    const element = document.createElement('tv-markdown') as HTMLElement & { markdown: string };
+    element.textContent = '# Not Markdown';
+    document.body.append(element);
+
+    expect(element.markdown).toBe('');
+    expect(element.querySelector('h1')).toBeNull();
+  });
+
   it('removes surrounding blank lines and only the indentation shared by nonblank lines', () => {
     const element = document.createElement('tv-markdown');
     const script = document.createElement('script');
@@ -144,6 +153,52 @@ describe('wikilinks', () => {
 });
 
 describe('sanitizing', () => {
+  it('keeps permitted headings, emphasis, lists, quotes, rules, and line breaks', () => {
+    const element = render('#### Four\n\n##### Five\n\n###### Six\n\n*Emphasis* and <s>old</s>  \nnext\n\n> Quoted\n\n- Item\n\n---');
+    expect([...element.querySelectorAll('h4, h5, h6')].map(heading => heading.textContent))
+      .toEqual(['Four', 'Five', 'Six']);
+    expect(element.querySelector('em')?.textContent).toBe('Emphasis');
+    expect(element.querySelector('s')?.textContent).toBe('old');
+    expect(element.querySelector('br')).not.toBeNull();
+    expect(element.querySelector('blockquote p')?.textContent).toBe('Quoted');
+    expect(element.querySelector('ul li')?.textContent).toBe('Item');
+    expect(element.querySelector('hr')).not.toBeNull();
+  });
+
+  it('renders GitHub-flavoured strikethrough, tables, and an ordered list start', () => {
+    const element = render('~~Removed~~\n\n3. Third\n4. Fourth\n\n| Key | Value |\n| --- | --- |\n| A | B |');
+    expect(element.querySelector('del')?.textContent).toBe('Removed');
+    expect(element.querySelector('ol')?.getAttribute('start')).toBe('3');
+    expect([...element.querySelectorAll('ol li')].map(item => item.textContent)).toEqual(['Third', 'Fourth']);
+    expect(element.querySelector('table thead tr th')?.textContent).toBe('Key');
+    expect(element.querySelector('table tbody tr td')?.textContent).toBe('A');
+    expect([...element.querySelectorAll('table th, table td')].map(cell => cell.textContent))
+      .toEqual(['Key', 'Value', 'A', 'B']);
+  });
+
+  it('keeps allowed table spans but removes authored ids outside generated headings', () => {
+    const element = render('<table><tbody><tr><td colspan="2" rowspan="3" id="forged">Cell</td></tr></tbody></table>\n\n<p id="forged">Text</p>\n\n<h2 id="forged">Heading</h2>');
+    const cell = element.querySelector('td');
+    expect(cell?.getAttribute('colspan')).toBe('2');
+    expect(cell?.getAttribute('rowspan')).toBe('3');
+    expect(cell?.hasAttribute('id')).toBe(false);
+    expect(element.querySelector('p')?.hasAttribute('id')).toBe(false);
+    expect(element.querySelector('h2')?.id).toBe('heading');
+  });
+
+  it('resolves a relative image address against the page base URL', () => {
+    const base = document.createElement('base');
+    base.href = 'https://example.org/notes/';
+    document.head.append(base);
+    try {
+      const element = render('![Cover](images/cover.png)');
+      expect(element.querySelector('img')?.getAttribute('src')).toBe('images/cover.png');
+      expect(element.querySelector('img')?.src).toBe('https://example.org/notes/images/cover.png');
+    } finally {
+      base.remove();
+    }
+  });
+
   it('keeps image src and ordinary href exactly as written in Markdown', () => {
     const element = render('![A picture](<images/a b.png>) and [a note](<notes/a b>)');
     expect(element.querySelector('img')?.getAttribute('src')).toBe('images/a b.png');

@@ -40,7 +40,7 @@ Text placed directly inside the element without the script is not read. Assignin
 ## Output
 
 - Markdown is parsed as GitHub-flavoured Markdown.
-- The result is sanitized before insertion. Only these elements are kept: `p`, `br`, `hr`, `h1`–`h6`, `strong`, `em`, `del`, `s`, `blockquote`, `ul`, `ol`, `li`, `pre`, `code`, `a`, `img`, `table`, `thead`, `tbody`, `tr`, `th`, `td`, and `input` with `type="checkbox"` for task lists. Only these attributes are kept: `href`, `src`, `alt`, `title`, `start`, `colspan`, `rowspan`, `id` on headings, and `type`, `checked` and `disabled` on task-list checkboxes. Data and ARIA attributes, scripts, styles, frames and any other raw HTML in the Markdown are removed.
+- The result is sanitized before insertion. Only these elements are kept: `p`, `br`, `hr`, `h1`–`h6`, `strong`, `em`, `del`, `s`, `blockquote`, `ul`, `ol`, `li`, `pre`, `code`, `a`, `img`, `table`, `thead`, `tbody`, `tr`, `th`, `td`, and `input` with `type="checkbox"` for task lists. Only these attributes are kept: `href`, `src`, `alt`, `title`, `start`, `colspan`, `rowspan`, `id` on headings, and `type`, `checked` and `disabled` on task-list checkboxes. Raw HTML using those elements and attributes survives sanitizing. Data and ARIA attributes, scripts, styles, frames and other elements outside the list are removed.
 - Task-list items (`- [ ]` and `- [x]`) render with a disabled checkbox in place of the bullet. The checkbox shows state; it does not change it.
 - Image `src` values are kept as written; relative addresses resolve against the page address.
 
@@ -96,7 +96,7 @@ md.addEventListener('linkclick', event => {
 
 ## Styling
 
-The element stylesheet styles all rendered content itself, so the element looks the same inside Television and on any other web page. [`style.css`](style.css), next to this specification, is that stylesheet and the authority for every value; the build ships it unchanged as `tv-markdown.css`. [`frames/tv-markdown.frame`](../../frames/tv-markdown.frame) renders a sample document with it, in light and dark colour schemes, at wide and narrow widths, and with page overrides of the variables.
+The element stylesheet styles all rendered content itself, so the element looks the same inside Television and on any other web page. [`style.css`](style.css) is the authority for every element CSS value; the build copies it unchanged as `tv-markdown.css`. The Markdown transformation is specified by the output rules above and tested by the package. [The Storybook stories](../../storybook/stories/tv-markdown.stories.ts) show the stylesheet on [sample rendered HTML](../../storybook/sample-markdown.ts), with light and dark colour schemes, wide and narrow widths, and page overrides of the variables. They do not load the production element. [The Storybook helper](../../storybook/helpers.ts) adopts the stylesheet and page CSS as constructable stylesheets.
 
 Its typography is a copy of the prose rules in the Television canonical stylesheet (`/canonical/v2/base.css`, the rules for regions marked `text-display="prose"`): the body size and line height, the heading scale, the space between blocks, underlined links, list indentation, blockquotes, code, rules, tables and images. The copy is scoped to `tv-markdown` and keeps the zero specificity of the original (`:where()`), so any page style overrides it. The element does not use the `text-display` attribute.
 
@@ -168,6 +168,6 @@ The built skill, in `skills/tv-markdown/`, contains:
 
 - `SKILL.md`: when to use the skill, how to load it (copy `tv-markdown.js` and `tv-markdown.css` next to the artifact `index.html`), both input forms, wikilinks, handling `linkclick`, [Interactivity](#interactivity) with its conditions, and short examples;
 - `tv-markdown.js`, with the parser and sanitizer bundled;
-- `tv-markdown.css`, a copy of [`style.css`](style.css).
+- `tv-markdown.css`, copied from [`style.css`](style.css).
 
 The source package, in `packages/tv-markdown/`, holds the element code, `SKILL.md` and tests: unit tests for indentation removal, heading ids, wikilink parsing and sanitizing, and browser tests for rendering, the precedence of the property over inline content, `linkclick` and `render`. The repository layout and build are specified in [the repository specification](../index.md).

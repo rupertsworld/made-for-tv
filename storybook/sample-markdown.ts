@@ -1,29 +1,5 @@
----
-title: tv-markdown
-description: The output of <tv-markdown> for a sample document, styled by spec/tv-markdown/style.css. Press Tab to see link focus.
-params:
-  scheme: { enum: [light, dark], default: light }
-  width: { enum: [wide, narrow], default: wide }
-  overrides: { type: boolean, default: false }
-  frontmatter: { enum: [shown, hidden], default: shown }
-imports:
-  - ../spec/tv-markdown/style.css
-style: |
-  body { margin: 0; }
-  .page { box-sizing: border-box; min-height: 100vh; padding: 32px; color-scheme: light; background: light-dark(white, oklch(20.5% 0 0)); }
-  .page[data-scheme="dark"] { color-scheme: dark; }
-  .page[data-width="wide"] tv-markdown { max-width: 720px; }
-  .page[data-width="narrow"] tv-markdown { max-width: 340px; }
-  .page[data-overrides="true"] tv-markdown {
-    --tv-markdown-font: Georgia, "Times New Roman", serif;
-    --tv-markdown-link: oklch(55% 0.18 30);
-    --tv-markdown-heading-weight: 700;
-    --tv-markdown-block-space: 16px;
-  }
----
-<div class="page" data-scheme="{{ scheme }}" data-width="{{ width }}" data-overrides="{{ overrides }}">
-<tv-markdown{% if frontmatter == "shown" %} show-frontmatter{% endif %}>
-{% if frontmatter == "shown" %}<dl data-frontmatter aria-label="Properties">
+/** Rendered HTML used only to display the Markdown stylesheet in Storybook. */
+export const frontmatterPanel = `<dl data-frontmatter aria-label="Properties">
 <div><dt>status</dt><dd>active</dd></div>
 <div><dt>tags</dt><dd><ul><li>agents</li><li>research</li><li>safety</li></ul></dd></div>
 <div><dt>related</dt><dd><ul><li><a data-wikilink="topics/goal-pressure" tabindex="0" role="link">Goal pressure</a></li><li><a data-wikilink="references/zhong-impossiblebench" tabindex="0" role="link">references/zhong-impossiblebench</a></li></ul></dd></div>
@@ -33,8 +9,9 @@ style: |
 <div><dt>rating</dt><dd>4</dd></div>
 <div><dt>owner</dt><dd data-empty>—</dd></div>
 <div><dt>details</dt><dd><code>pages: 12, format: pdf</code></dd></div>
-</dl>{% endif %}
-<h1 id="reading-notes">Reading notes</h1>
+</dl>`;
+
+export const sampleBody = `<h1 id="reading-notes">Reading notes</h1>
 <p>Notes on <em>agent behaviour</em> and <strong>goal pressure</strong>, with sources linked as ordinary links such as <a href="https://example.org/impossiblebench">ImpossibleBench</a> and as wikilinks such as <a data-wikilink="topics/goal-pressure" tabindex="0" role="link">topics/goal-pressure</a> or <a data-wikilink="jane" tabindex="0" role="link">Jane</a>. A link to a heading: <a href="#open-questions">open questions</a>.</p>
 <h2 id="sources">Sources</h2>
 <ul>
@@ -75,6 +52,4 @@ style: |
 <h2 id="open-questions">Open questions</h2>
 <p>An image keeps its aspect ratio and never exceeds the width of the element:</p>
 <p><img alt="A wide sample image" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='960' height='240'%3E%3Crect width='960' height='240' fill='%23a3a3a3'/%3E%3Ctext x='480' y='130' font-family='sans-serif' font-size='28' text-anchor='middle' fill='white'%3E960 × 240 image%3C/text%3E%3C/svg%3E"></p>
-<p>A very long address wraps instead of overflowing: https://example.org/a/very/long/path/that/would/otherwise/push/the/page/wider/than/the/element</p>
-</tv-markdown>
-</div>
+<p>A very long address wraps instead of overflowing: https://example.org/a/very/long/path/that/would/otherwise/push/the/page/wider/than/the/element</p>`;

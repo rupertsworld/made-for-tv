@@ -34,27 +34,10 @@
 :where(tv-book-catalog, tv-book-detail) :where(button) { color: inherit; cursor: pointer; }
 :where(tv-book-catalog, tv-book-detail) :where(button, a, h2):focus-visible { outline: var(--_focus); outline-offset: 4px; }
 :where(tv-book-catalog, tv-book-detail) :where(p, h2, dl, dd) { margin: 0; }
-:where(tv-book-catalog, tv-book-detail) :where(.bc-message) { padding-block: var(--_space); }
-:where(tv-book-catalog, tv-book-detail) :where(.bc-message:empty) { padding-block: 0; }
 
-:where(tv-book-catalog) :where(.bc-grid) {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 132px), 1fr));
-  gap: var(--_gap);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-:where(tv-book-catalog) :where(.bc-activate) {
-  display: block;
-  width: 100%;
-  border: 0;
-  padding: 0;
-  background: none;
-  text-align: left;
-  border-radius: var(--_radius);
-  overflow-wrap: anywhere;
-}
+:where(tv-book-catalog, tv-book-detail) :where(.bc-authors, .bc-caption) { color: var(--_muted); font-size: var(--_small); }
+:where(tv-book-catalog, tv-book-detail) :where(.bc-description) { white-space: pre-wrap; }
+
 :where(tv-book-catalog, tv-book-detail) :where(.bc-cover) {
   position: relative;
   display: flex;
@@ -80,22 +63,45 @@
   object-fit: contain;
   background: var(--_surface);
 }
-@media (hover: hover) {
-  :where(tv-book-catalog) :where(.bc-activate:hover .bc-cover) { transform: translateY(-3px); }
-}
 @media (prefers-reduced-motion: reduce) {
   :where(tv-book-catalog, tv-book-detail) :where(.bc-cover) { transition: none; }
 }
+
+:where(tv-book-catalog) :where(.bc-activate) {
+  display: block;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: none;
+  text-align: left;
+  border-radius: var(--_radius);
+  overflow-wrap: anywhere;
+}
+
 :where(tv-book-catalog) :where(.bc-title, .bc-authors, .bc-description, .bc-caption) { display: block; }
 :where(tv-book-catalog) :where(.bc-title) { margin-top: var(--_space); font-weight: var(--_heading-weight); }
-:where(tv-book-catalog, tv-book-detail) :where(.bc-authors, .bc-caption) { color: var(--_muted); font-size: var(--_small); }
+
+:where(tv-book-catalog) :where(.bc-description) { margin-top: var(--_control-padding); font-size: var(--_small); }
+@media (hover: hover) {
+  :where(tv-book-catalog) :where(.bc-activate:hover .bc-cover) { transform: translateY(-3px); }
+}
+
+:where(tv-book-catalog) :where(.bc-grid) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 132px), 1fr));
+  gap: var(--_gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:where(tv-book-catalog, tv-book-detail) :where(.bc-message) { padding-block: var(--_space); }
+:where(tv-book-catalog, tv-book-detail) :where(.bc-message:empty) { padding-block: 0; }
 
 :where(tv-book-detail) :where(.bc-record) { display: grid; gap: var(--_gap); }
 :where(tv-book-detail) :where(.bc-cover) { max-width: 240px; }
 :where(tv-book-detail) :where(.bc-record-text) { display: flex; flex-direction: column; gap: var(--_space); align-items: flex-start; }
 :where(tv-book-detail) :where(.bc-detail-title) { font-size: var(--_heading); font-weight: var(--_heading-weight); line-height: 1.25; }
-:where(tv-book-catalog, tv-book-detail) :where(.bc-description) { white-space: pre-wrap; }
-:where(tv-book-catalog) :where(.bc-description) { margin-top: var(--_control-padding); font-size: var(--_small); }
 :where(tv-book-detail) :where(.bc-metadata) { width: 100%; }
 :where(tv-book-detail) :where(.bc-metadata > div) { padding-block: var(--_control-padding); border-bottom: 1px solid var(--_border); }
 :where(tv-book-detail) :where(dt) { color: var(--_muted); font-size: var(--_small); }

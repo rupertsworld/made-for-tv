@@ -12,17 +12,18 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.spec.json --noEmit",
     "test:unit": "vitest run",
     "test:e2e": "node scripts/run-e2e.mjs",
     "test": "node scripts/test.mjs",
-    "frames": "cd frames && ../node_modules/.bin/frameset"
+    "storybook": "storybook dev -c storybook -p 6006 --no-open --host 127.0.0.1"
   },
   "devDependencies": {
     "@playwright/test": "1.58.2",
+    "@storybook/html-vite": "10.6.0",
     "@types/node": "24.9.1",
-    "frameset": "0.17.1",
     "jsdom": "^27.0.0",
+    "storybook": "10.6.0",
     "typescript": "5.9.3",
     "vite": "6.4.3",
     "vitest": "4.1.11"

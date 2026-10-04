@@ -1,9 +1,8 @@
 /*
  * tv-markdown — element stylesheet.
  *
- * This file is the styling specification for <tv-markdown>. The build ships it
- * unchanged as tv-markdown.css, and frames/tv-markdown.frame renders sample output
- * with it.
+ * This is the element stylesheet for <tv-markdown>. The build writes it as
+ * tv-markdown.css, and the Storybook stories show the named examples.
  *
  * The prose rules are a copy of the Television canonical prose rules
  * (/canonical/v2/base.css, regions marked text-display="prose", Television
