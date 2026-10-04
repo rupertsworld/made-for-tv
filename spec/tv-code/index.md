@@ -321,7 +321,7 @@ The bundled languages are JavaScript, TypeScript, JSX, TSX, JSON, JSON with comm
 
 ## Styling
 
-The element stylesheet styles all rendered content, so the element looks the same inside Television and on any other web page. The `style` lists in [`templates/`](templates/) are the authority for its values. The element template composes the parts' styles; the build writes each distinct string in order, followed by the `tv-markdown` stylesheet, as `tv-code.css`.
+The element stylesheet styles all rendered content, so the element looks the same inside Television and on any other web page. The `style` lists in [`templates/`](templates/) are the authority for its values. The element template composes the styles of its parts; the build writes them, followed by the `tv-markdown` stylesheet, as `tv-code.css`.
 
 - The interface uses the sans-serif font and Television control density: rows 26 px high, text at the small size. Code uses the monospace font at 12 px with a line height of 18 px.
 - Colours follow the `color-scheme` in effect for the element. Inside Television, the element follows the active theme with no configuration.
