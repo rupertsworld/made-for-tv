@@ -65,4 +65,4 @@ Each story defines a demo page object with `options`, `style` and `render(args, 
 
 ## Git
 
-The repository is local, with no remote. `node_modules/` and test output are ignored; `skills/` is not.
+`node_modules/` and test output are ignored; `skills/` is not.

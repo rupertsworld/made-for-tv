@@ -1,18 +1,14 @@
 {
-  "name": "tv-markdown",
+  "name": "tv-code",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/tv-markdown.ts"
-  },
   "scripts": {
     "build": "vite build --config vite.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "dompurify": "3.4.16",
-    "marked": "18.0.13",
-    "yaml": "2.9.1"
+    "shiki": "4.5.0",
+    "tv-markdown": "0.1.0"
   }
 }

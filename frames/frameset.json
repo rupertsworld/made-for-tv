@@ -1,0 +1,10 @@
+{
+  "root": "..",
+  "sidebar": [
+    {
+      "type": "frame",
+      "path": "frames/tv-code.frame",
+      "title": "tv-code"
+    }
+  ]
+}
