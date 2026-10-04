@@ -1,4 +1,4 @@
-/** Build a self-contained browser module and write the specified element CSS. */
+/** Build a self-contained browser module and copy the skill's authored files. */
 import { copyFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,8 +15,10 @@ export default defineConfig({
       name: "copy-skill-files",
       closeBundle() {
         copyFileSync(path.join(packageDirectory, "SKILL.md"), path.join(outputDirectory, "SKILL.md"));
-        copyFileSync(path.join(repositoryRoot, "spec", "tv-markdown", "style.css"),
-          path.join(outputDirectory, "tv-markdown.css"));
+        copyFileSync(
+          path.join(repositoryRoot, "spec", "tv-markdown", "style.css"),
+          path.join(outputDirectory, "tv-markdown.css"),
+        );
       },
     },
   ],

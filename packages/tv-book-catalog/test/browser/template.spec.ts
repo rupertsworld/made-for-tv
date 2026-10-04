@@ -1,6 +1,7 @@
 /** Compare the independent template markup and CSS with the shipped elements. */
 import { expect, test } from '@playwright/test';
 import template from '../../../../spec/tv-book-catalog/templates/tv-book-catalog';
+import { stylesheet } from '../../../../spec/types';
 import type { Book, TvBookCatalogElement, TvBookDetailElement } from '../../src/tv-book-catalog';
 
 const testPageStyle = `body { margin: 0; }
@@ -84,7 +85,7 @@ ${template.render({ view, status: 'ready', books, book: books[0] })}
           iframe.srcdoc = `<!doctype html><html><head><style>${templateStyle}</style><style>${pageStyle}</style></head><body>${referenceBody}</body></html>`;
           document.body.append(iframe);
         });
-      }, { referenceBody, templateStyle: [...new Set(template.style)].join('\n'), pageStyle: testPageStyle, books, view, variant }) as {
+      }, { referenceBody, templateStyle: stylesheet(template.style), pageStyle: testPageStyle, books, view, variant }) as {
         actualShape: unknown; referenceShape: unknown; actualReadyPart: unknown; referenceReadyPart: unknown;
         actualStyles: unknown; referenceStyles: unknown;
       };

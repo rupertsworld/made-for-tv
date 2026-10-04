@@ -89,7 +89,7 @@ test('build configuration imports only its own template and shared types', () =>
       if (target?.startsWith(`${specRoot}${path.sep}`)) {
         const ownTemplate = path.join(specRoot, packageName, 'templates', `${packageName}.ts`);
         expect((packageName === 'tv-book-catalog' || packageName === 'tv-code')
-          && (target === ownTemplate || (target === typesPath && module.typeOnly)),
+          && (target === ownTemplate || target === typesPath),
           `${buildConfig} imports ${module.name}`).toBe(true);
       }
     }

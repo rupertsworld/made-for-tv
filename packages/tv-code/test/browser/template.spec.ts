@@ -2,10 +2,11 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import template from '../../../../spec/tv-code/templates/tv-code';
+import { stylesheet } from '../../../../spec/types';
 import { sampleBodies, sampleInputHtml, sampleRows } from '../../../../storybook/sample-code';
 
 const markdownStyle = readFileSync(new URL('../../../../spec/tv-markdown/style.css', import.meta.url), 'utf8');
-const elementStyle = [...new Set(template.style)].join('\n');
+const elementStyle = stylesheet(template.style);
 const pageStyle = `body { margin: 0; }
 .page { box-sizing: border-box; min-height: 100vh; padding: 24px; color-scheme: light; background: Canvas; }
 .page[data-scheme="dark"] { color-scheme: dark; }

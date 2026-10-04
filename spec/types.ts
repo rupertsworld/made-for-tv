@@ -8,3 +8,8 @@ export interface Template<Args> {
   style: readonly string[];   // Child styles precede the template's own CSS.
   render(args: Args): string; // Element HTML.
 }
+
+/** Join a style list into one stylesheet, keeping the first copy of any repeated CSS. */
+export function stylesheet(style: readonly string[]): string {
+  return [...new Set(style)].join('\n');
+}
