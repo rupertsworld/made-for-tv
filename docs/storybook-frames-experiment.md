@@ -24,30 +24,6 @@ The catalog browser tests compare the built elements with the independent templa
 
 Typecheck passed. Unit tests passed **112/112**. The tv-markdown browser suite passed **18/18**, the catalog suite **19/19**, and the final tv-code suite **132/132**, including six new template comparisons. A first tv-code run passed 131/132: its 20,000-file finder timing test took 45.5 ms against a 45 ms limit. The targeted finder run and the final full run passed without changing production code. The old Books to get test is absent from the merged branch, so its earlier failure is no longer part of these results.
 
-## Viewer and parity
-
-The saved baseline has 64 catalog combinations and 16 Markdown combinations at 1280 × 900. The catalog capture on port 6107 matched **64/64 rendered markups and 64/64 full-page screenshots pixel for pixel**. Sixteen raw catalog markup records contain old ready-state comment markers; removing those comments makes their rendered markup equal.
-
-The Markdown Default and Dark standalone stories use the old sample document. Their full-page screenshots both matched the corresponding baseline pixel for pixel. All **35** live standalone stories rendered on port 6006 without page errors. Chromium changed controls for tv-code, catalog, tv-markdown and the tv-code tree in the manager; each address gained an `&args=...` value and reloading restored the selected control and preview. The catalog CSS diff only reorders rules: a CSS parser found the same 105 declarations before and after, and no winning declaration changed.
-
-### tv-code migration
-
-The tv-code frame was captured before migration at all **12** combinations of scheme, width and open file (code, Markdown or image). Each capture used a fresh browser context because the built element remembers expanded folders in local storage. The independent template specifies the shell, sidebar tree, pane header and finder. It receives the rendered pane body as sample data; it does not duplicate Shiki or tv-markdown. No inspected prose rule disagreed with the built element.
-
-The Storybook standalone documents matched **12/12 normalized page markups and 12/12 full-page screenshots pixel for pixel**. Markup normalization removes whitespace between tags and replaces transient blob or data image addresses and the generated finder list ID with stable tokens. The image bytes and rendered pixels match. The catalog still matches **64/64** markups and screenshots after this migration.
-
-The rebuilt tv-code CSS has the same rules in the same order as the former `spec/tv-code/style.css` after removing comments and whitespace. The shipped `skills/` diff changes the tv-code header to point to the composed templates, changes the bundled tv-markdown header to describe its current Storybook sample, and adds blank lines where CSS strings join. The standalone tv-markdown CSS has the same header correction. No CSS declaration or cascade winner changed.
-
-## Measured cost
-
-| Measure                                    | Former viewer baseline | Storybook experiment |
-| ------------------------------------------ | ---------------------: | -------------------: |
-| Process start to first document response   | 1,541 ms               | 2,259 ms             |
-| `node_modules/` disk use                   | 223,947,163 bytes      | 146,093,595 bytes    |
-| Authored code, CSS and configuration lines | 476 removed            | 960 added            |
-
-These measurements belong to the earlier two-skill experiment, before tv-code was merged. The process timing is one start per viewer with existing filesystem and Vite caches. The former viewer selected port 4401 because 4400 was occupied; Storybook used 6107 because the live server occupies 6006. Storybook took 718 ms longer in this measurement, while `node_modules/` used 77,853,568 fewer bytes. The line count compares that earlier working tree with its then-current `HEAD`; it includes code, CSS, JSON configuration and `.gitignore`, and excludes docs, built skills and the generated package lock. Storybook and `@storybook/html-vite` are pinned to `10.6.0`.
-
 ## Recommendation
 
-Use Storybook for all three skills. Keep tv-markdown as prose plus its copied stylesheet, with package tests for the transformation performed by Marked. Keep independent templates for catalog and tv-code interface markup that this repository builds itself. All checked catalog and tv-code states match their saved screenshots, and the specification boundary is tested. Library-produced content remains in prose and package tests.
+Use Storybook for all three skills. Keep tv-markdown as prose plus its copied stylesheet, with package tests for the transformation performed by Marked. Keep independent templates for catalog and tv-code interface markup that this repository builds itself. The specification boundary is tested. Library-produced content remains in prose and package tests.
