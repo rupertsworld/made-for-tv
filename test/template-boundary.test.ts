@@ -32,7 +32,8 @@ function importedModules(file: string): ImportedModule[] {
 
 const specRoot = path.resolve('spec');
 const typesPath = path.join(specRoot, 'types.ts');
-const stylesOnlyPath = path.join(specRoot, 'tv-book-catalog', 'templates', 'base.ts');
+const stylesOnlyPaths = new Set(['tv-book-catalog', 'tv-code']
+  .map(skill => path.join(specRoot, skill, 'templates', 'base.ts')));
 const templates = readdirSync('spec', { withFileTypes: true })
   .filter(entry => entry.isDirectory())
   .flatMap(entry => {
@@ -61,7 +62,7 @@ test('specification templates import only other templates, base CSS or shared ty
     for (const module of importedModules(file)) {
       const target = resolvedImport(file, module.name);
       expect(target !== null && target !== file && (templatePaths.has(target)
-        || target === stylesOnlyPath
+        || stylesOnlyPaths.has(target)
         || (target === typesPath && module.typeOnly)),
         `${file} imports ${module.name}`).toBe(true);
     }
@@ -80,14 +81,14 @@ test('specification templates have one default export and no named exports', () 
   }
 });
 
-test('build configuration imports only the catalog template and shared types', () => {
+test('build configuration imports only its own template and shared types', () => {
   for (const packageName of readdirSync('packages')) {
     const buildConfig = path.join('packages', packageName, 'vite.config.ts');
     for (const module of importedModules(buildConfig)) {
       const target = resolvedImport(buildConfig, module.name);
       if (target?.startsWith(`${specRoot}${path.sep}`)) {
-        const ownTemplate = path.join(specRoot, 'tv-book-catalog', 'templates', 'tv-book-catalog.ts');
-        expect(packageName === 'tv-book-catalog'
+        const ownTemplate = path.join(specRoot, packageName, 'templates', `${packageName}.ts`);
+        expect((packageName === 'tv-book-catalog' || packageName === 'tv-code')
           && (target === ownTemplate || (target === typesPath && module.typeOnly)),
           `${buildConfig} imports ${module.name}`).toBe(true);
       }

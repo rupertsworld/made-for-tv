@@ -3,6 +3,8 @@ import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+import template from "../../spec/tv-code/templates/tv-code";
+import type { Template } from "../../spec/types";
 
 const packageDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(packageDirectory, "../..");
@@ -17,13 +19,12 @@ export default defineConfig({
         copyFileSync(path.join(packageDirectory, "SKILL.md"), path.join(outputDirectory, "SKILL.md"));
         // The viewer renders Markdown with the bundled tv-markdown element, so its
         // stylesheet ships after the viewer stylesheet in one file.
-        const stylesheets = [
-          path.join(repositoryRoot, "spec", "tv-code", "style.css"),
-          path.join(repositoryRoot, "spec", "tv-markdown", "style.css"),
-        ];
+        const elementTemplate: Template<Parameters<typeof template.render>[0]> = template;
+        const elementStyle = [...new Set(elementTemplate.style)].join("\n");
+        const markdownStyle = readFileSync(path.join(repositoryRoot, "spec", "tv-markdown", "style.css"), "utf8");
         writeFileSync(
           path.join(outputDirectory, "tv-code.css"),
-          stylesheets.map(file => readFileSync(file, "utf8")).join("\n"),
+          [elementStyle, markdownStyle].join("\n"),
         );
       },
     },

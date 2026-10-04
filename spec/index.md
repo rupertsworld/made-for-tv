@@ -11,6 +11,9 @@ spec/
   tv-book-catalog/
     index.md
     templates/               tv-book-catalog.ts, grid.ts, card.ts, cover.ts, base.ts
+  tv-code/
+    index.md
+    templates/               tv-code.ts, sidebar.ts, header.ts, finder.ts and parts
 packages/
   <skill>/                   the source package of one skill
 storybook/
@@ -18,6 +21,7 @@ storybook/
   helpers.ts                 joins templates and demo pages
   sample-books.ts            book data used by stories
   sample-markdown.ts         rendered HTML used to show the Markdown CSS
+  sample-code.ts             authored files and rendered code and Markdown samples
   stories/
     *.stories.ts             Storybook views of specifications and parts
 test/                       repository-wide unit tests, including helpers.test.ts
@@ -40,7 +44,7 @@ Each skill has one name, used for its specification folder, package folder, pack
 `npm run build` at the root builds every package. A package build replaces `skills/<skill>/` with:
 
 - the JavaScript, built by Vite as one ES module named after the skill, with its dependencies bundled;
-- the element CSS: `spec/tv-markdown/style.css` copied unchanged, or the distinct CSS strings from the default export of `spec/tv-book-catalog/templates/tv-book-catalog.ts` joined in order;
+- the element CSS: `spec/tv-markdown/style.css` copied unchanged, or the distinct CSS strings from the element template joined in order. The tv-code build then appends the tv-markdown stylesheet for rendered Markdown files;
 - `SKILL.md`, copied from the package.
 
 Third-party licence notices for bundled code are deferred until the skills are distributed beyond Rupert.
@@ -57,9 +61,11 @@ A built skill is self-contained. An agent installs it by copying or linking `ski
 
 The form of a skill specification follows who produces its markup. For `tv-markdown`, the Marked library transforms Markdown. Its output and behaviour are specified in prose in `spec/tv-markdown/index.md` and tested by the package. `spec/tv-markdown/style.css` specifies the element styling and is copied into the built skill. Storybook shows that stylesheet on static sample HTML from `storybook/sample-markdown.ts`; the story does not load production code.
 
-The book catalog builds its own markup, so its specification adds templates. Each template default-exports `{ options, style, render }` and checks that object against the shared `Template<Args>` type in `spec/types.ts`. Options describe select or boolean settings that change element markup; the first value in each list is the default. Style is a list of element CSS strings, and render returns only element markup. Templates are separate specification files; production source does not import them. Package build configuration joins the distinct strings in the element template style list to write the shipped CSS. Browser tests import the templates and compare their markup and computed styles with the built elements.
+The book catalog and tv-code build their own interface markup, so their specifications add templates. Each template default-exports `{ options, style, render }` and checks that object against the shared `Template<Args>` type in `spec/types.ts`. Options describe select or boolean settings that change element markup; the first value in each list is the default. Style is a list of element CSS strings, and render returns only element markup. Templates are separate specification files; production source does not import them. Package build configuration joins the distinct strings in the element template style list to write the shipped CSS. Browser tests import the templates and compare their markup and computed styles with the built elements.
 
-The book catalog templates are under `spec/tv-book-catalog/templates/`. The grid calls `card.render`; the card and the detail record call `cover.render`. `base.ts` exports shared CSS only. Each parent puts child styles before its own CSS. Repeated strings are removed when the CSS is built or adopted in Storybook, so the cover rules occur once in the combined sheet. Templates require book data as `render` arguments. `storybook/sample-books.ts` supplies that data to the stories; browser comparisons use their own fixtures. Options contain only display settings. The repository-wide test under `test/` checks that templates import only other templates, `base.ts`, or the shared type with `import type`, and stay out of production source.
+The book catalog templates are under `spec/tv-book-catalog/templates/`. The grid calls `card.render`; the card and the detail record call `cover.render`. `base.ts` exports shared CSS only. Each parent puts child styles before its own CSS. Repeated strings are removed when the CSS is built or adopted in Storybook, so the cover rules occur once in the combined sheet. Templates require book data as `render` arguments. `storybook/sample-books.ts` supplies that data to the stories; browser comparisons use their own fixtures. Options contain only display settings.
+
+The tv-code templates are under `spec/tv-code/templates/`. The element template composes the sidebar and file tree, pane header and finder. Their style lists compose the interface CSS. Storybook supplies authored file input and sample highlighted code, rendered Markdown and image HTML from `storybook/sample-code.ts`; Shiki and tv-markdown produce that content in the built element, so its transformation rules stay in prose and package tests. The repository-wide test under `test/` checks that templates import only other templates, their `base.ts`, or the shared type with `import type`, and stay out of production source.
 
 Each story defines a demo page object with `options`, `style` and `render(args, element)`. The page controls scheme, width and overrides as needed and wraps the element markup. `storybook/helpers.ts` uses the first option values as defaults and builds Storybook controls. Book stories pass sample book data to their templates. The Markdown story supplies a template-shaped object locally, using the raw `style.css` text and static sample HTML; its frontmatter option changes which sample markup is shown. On every render the helper adopts one constructable stylesheet for each distinct CSS string from the element and page, replacing sheets from the previous story. It caches sheets for later renders. `npm run storybook` opens the viewer using the configuration in `storybook/`. A story also renders alone at `iframe.html?id=<story-id>&args=<arguments>`.
 

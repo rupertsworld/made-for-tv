@@ -1,9 +1,8 @@
 /*
  * tv-code — element stylesheet.
  *
- * This file is the styling specification for <tv-code>. The build ships
- * it, followed by the tv-markdown stylesheet, as tv-code.css, and
- * frames/tv-code.frame renders the element with it.
+ * The composed templates specify the element stylesheet. The build ships
+ * their styles, followed by the tv-markdown stylesheet, as tv-code.css.
  *
  * Selectors are scoped to the element and use one class or attribute per part,
  * so they take precedence over the zero-specificity rules of the Television
@@ -74,6 +73,7 @@ tv-code tv-code-file,
 tv-code tv-code-folder {
   display: none;
 }
+
 
 /* Layout, sidebar, tree and pane. */
 tv-code .cv-app {
@@ -228,6 +228,7 @@ tv-code .cv-resize-handle::after {
 }
 tv-code .cv-resize-handle:hover::after,
 tv-code .cv-app-dragging .cv-resize-handle::after { background: var(--_accent); }
+
 tv-code .cv-pane {
   flex: 1;
   min-width: 0;
@@ -268,6 +269,7 @@ tv-code .cv-failure { display: flex; align-items: center; gap: 8px; color: var(-
   tv-code .cv-caret-spinning .cv-icon,
   tv-code .cv-pane-progress-active::before { animation: none; transition: none; }
 }
+
 
 /* Code view and syntax. */
 tv-code .cv-code-view {
@@ -450,6 +452,7 @@ tv-code .cv-t-link { color: var(--_syntax-link); }
 tv-code .cv-t-inserted { color: var(--_syntax-inserted); }
 tv-code .cv-t-deleted { color: var(--_syntax-deleted); }
 
+
 /* Finder: quick-open panel above the file tree and code pane. */
 tv-code .cv-finder {
   position: absolute;
@@ -608,6 +611,7 @@ tv-code .cv-finder-spinner {
   tv-code .cv-finder-spinner { animation: none; }
 }
 
+
 /* Pane bodies, metadata, actions and file-kind colour. */
 tv-code .cv-empty-state {
   display: flex;
@@ -706,9 +710,8 @@ tv-code .cv-finder-row [data-icon="fileLock"] { color: var(--_syntax-comment); }
 /*
  * tv-markdown — element stylesheet.
  *
- * This file is the styling specification for <tv-markdown>. The build ships it
- * unchanged as tv-markdown.css, and frames/tv-markdown.frame renders sample output
- * with it.
+ * This is the element stylesheet for <tv-markdown>. The build writes it as
+ * tv-markdown.css; the Storybook story shows it on sample HTML.
  *
  * The prose rules are a copy of the Television canonical prose rules
  * (/canonical/v2/base.css, regions marked text-display="prose", Television

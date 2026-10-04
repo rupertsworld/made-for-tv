@@ -321,7 +321,7 @@ The bundled languages are JavaScript, TypeScript, JSX, TSX, JSON, JSON with comm
 
 ## Styling
 
-The element stylesheet styles all rendered content, so the element looks the same inside Television and on any other web page. [`style.css`](style.css), next to this specification, is that stylesheet and the authority for every value. The build ships it, followed by the `tv-markdown` stylesheet, as `tv-code.css`.
+The element stylesheet styles all rendered content, so the element looks the same inside Television and on any other web page. The `style` lists in [`templates/`](templates/) are the authority for its values. The element template composes the parts' styles; the build writes each distinct string in order, followed by the `tv-markdown` stylesheet, as `tv-code.css`.
 
 - The interface uses the sans-serif font and Television control density: rows 26 px high, text at the small size. Code uses the monospace font at 12 px with a line height of 18 px.
 - Colours follow the `color-scheme` in effect for the element. Inside Television, the element follows the active theme with no configuration.
@@ -331,7 +331,7 @@ The element stylesheet styles all rendered content, so the element looks the sam
 
 ### Variables
 
-Each variable resolves through three layers: the `--tv-code-*` variable when the page sets it, otherwise the Television variable, otherwise a built-in default. A page overrides a variable by setting it on the element or an ancestor. Exact default values live in `style.css`.
+Each variable resolves through three layers: the `--tv-code-*` variable when the page sets it, otherwise the Television variable, otherwise a built-in default. A page overrides a variable by setting it on the element or an ancestor. Exact default values live in the templates' `style` lists.
 
 | Variable                                | Television variable    | Used for                                                    |
 | --------------------------------------- | ---------------------- | ----------------------------------------------------------- |
@@ -374,4 +374,4 @@ The built skill, in `skills/tv-code/`, contains:
 - `tv-code.js`, with the highlighter, its languages and `tv-markdown` bundled;
 - `tv-code.css`, the specification stylesheet followed by the `tv-markdown` stylesheet.
 
-The package, in `packages/tv-code/`, depends on the `tv-markdown` package in this repository for the Markdown element. It holds the element code, `SKILL.md` and tests: unit tests for logic with real branching, such as path handling, ordering and dim patterns, language detection, matching in the finder and the comparison of file versions, and browser tests for every behaviour a reader can observe. [`frames/tv-code.frame`](../../frames/tv-code.frame) shows the element with child tags, in light and dark colour schemes, at wide and narrow widths. The repository layout and build are specified in [the repository specification](../index.md).
+The package, in `packages/tv-code/`, depends on the `tv-markdown` package in this repository for the Markdown element. It holds the element code, `SKILL.md` and tests: unit tests for logic with real branching, such as path handling, ordering and dim patterns, language detection, matching in the finder and the comparison of file versions, and browser tests for every behaviour a reader can observe. The independent templates under [`templates/`](templates/) specify the interface markup that tv-code builds: the shell, sidebar tree, pane header and finder. They receive highlighted code, rendered Markdown and image HTML as data; Shiki and tv-markdown produce that content, as specified in the [Code](#code) and [Markdown](#markdown) sections. Storybook shows each view and useful parts without importing package source. Browser comparisons check the built interface against the templates. The repository layout and build are specified in [the repository specification](../index.md).
