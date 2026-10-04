@@ -144,11 +144,11 @@ The remaining spacing in the copied rules, such as heading margins and list inde
 
 ## Interactivity
 
-The element renders what it is given; where the Markdown comes from and where its links lead are up to the page. The skill instructions tell agents to make two things live when the environment supports them, using whatever mechanism the environment documents, and to keep the plain behaviour otherwise. An agent decides from what the environment documents, such as its own instructions or the documentation of the server that holds the file. It does not probe for undocumented mechanisms, read the source code of the host application, or copy files into the page's folder to borrow the host's reloading.
+The element renders what it is given; where the Markdown comes from and where its links lead are up to the page. The skill instructions tell agents to make two things live when the environment supports them, using whatever mechanism the environment documents, and to keep the plain behaviour otherwise. An agent decides from what the environment documents, such as its own instructions or the documentation of the server that holds the file. It does not probe for undocumented mechanisms.
 
 ### Live updates
 
-The page keeps the content current as the document changes. This is supported when the page loads the document over HTTP from an address it can reach, and the environment documents a way to learn that the document changed. Markdown written into the page, generated once by the agent, or held where no server exposes it renders once. A Television artifact showing one of its own files already reloads when they change.
+The page keeps the content current as the document changes. This is supported when the page loads the document over HTTP from an address it can reach, and the environment documents a way to learn that the document changed. Markdown written into the page, generated once by the agent, or held where no server exposes it renders once.
 
 ### Following links
 

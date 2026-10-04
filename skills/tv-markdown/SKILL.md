@@ -90,7 +90,7 @@ The element removes scripts, styling, data attributes from source Markdown, and 
 
 When the environment supports it, wire up two behaviours using the mechanism the environment documents, such as your instructions or the documentation of the server that holds the file:
 
-- **Live updates.** Keep the content current as the document changes. This applies when the page loads the document over HTTP and the environment documents a way to learn that it changed. Markdown written into the page, generated once, or held where no server exposes it renders once. A Television artifact showing one of its own files already reloads.
+- **Live updates.** Keep the content current as the document changes. This applies when the page loads the document over HTTP and the environment documents a way to learn that it changed. Markdown written into the page, generated once, or held where no server exposes it renders once.
 - **Following links.** Clicking a link to another document opens it inside the page, with Back and Forward returning to earlier documents. This applies to relative links that resolve on the same server and to wikilinks whose meaning the environment documents, such as a vault path. Other links keep their normal behaviour; wikilinks without a documented meaning stay without an address.
 
-If the environment documents no way to do either, keep the plain behaviour. Do not probe for undocumented mechanisms, read the host application's source, or copy files into the artifact folder to borrow the host's reloading.
+If the environment documents no way to do either, keep the plain behaviour. Do not probe for undocumented mechanisms.
