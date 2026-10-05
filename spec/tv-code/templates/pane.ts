@@ -16,6 +16,8 @@ tv-code .cv-code-view {
   font-size: var(--_code-size);
   line-height: var(--_code-line-height);
   tab-size: 4;
+  /* Wrapped indentation is capped against the width of the code view. */
+  container-type: inline-size;
 }
 
 tv-code .cv-code-view:focus-visible,
@@ -49,8 +51,11 @@ tv-code .cv-line-number {
   left: 0;
   z-index: 1;
   /* Line numbers are buttons; reset the Television button shape so the
-     divider stays straight. */
-  display: block;
+     divider stays straight. Browsers centre button content vertically, so
+     a flex box keeps the number on the first row of a wrapped line. */
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
   flex: 0 0 calc(var(--cv-gutter-digits, 2) * 1ch + 20px);
   align-self: stretch;
   box-sizing: border-box;
@@ -63,7 +68,6 @@ tv-code .cv-line-number {
   color: var(--_text-muted);
   font: inherit;
   line-height: var(--_code-line-height);
-  text-align: right;
   cursor: pointer;
   user-select: none;
 }
@@ -101,7 +105,14 @@ tv-code .cv-wrap .cv-line {
 }
 
 tv-code .cv-wrap .cv-code-text {
+  /* Continuation rows keep the indentation of their line, as in VS Code.
+     The padding moves every row in by the indentation and the negative
+     text-indent brings the first row back. The cap keeps room for the text
+     of deeply nested lines. */
+  --_wrap-indent: min(calc(var(--cv-indent, 0) * 1ch), 40cqi);
   min-width: 0;
+  padding-left: calc(12px + var(--_wrap-indent));
+  text-indent: calc(-1 * var(--_wrap-indent));
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

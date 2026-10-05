@@ -155,6 +155,8 @@ export class CodeView {
       const code = row.lastElementChild as HTMLElement;
       if (fragments?.[index]) code.append(fragments[index]);
       else code.textContent = lines[index];
+      const indent = indentColumns(lines[index]);
+      if (indent) code.style.setProperty("--cv-indent", String(indent));
       if (index < lines.length - 1) code.append(this.lineBreak());
       row.dataset.line = String(number);
       block!.append(row);
@@ -267,4 +269,19 @@ export class CodeView {
     if (this.markTimer) clearTimeout(this.markTimer);
     this.markTimer = null;
   }
+}
+
+/**
+ * The width of the leading whitespace of a line, in columns. A tab advances
+ * to the next stop of the 4-column tab size the stylesheet sets, so wrapped
+ * continuation rows line up with the text of the line in either case.
+ */
+function indentColumns(line: string): number {
+  let columns = 0;
+  for (const character of line) {
+    if (character === " ") columns++;
+    else if (character === "\t") columns += 4 - (columns % 4);
+    else break;
+  }
+  return columns;
 }

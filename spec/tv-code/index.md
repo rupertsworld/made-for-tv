@@ -217,7 +217,7 @@ The element decides how to show a file from its name and, when needed, its bytes
 
 - **Lines.** Each line has its number in a gutter at the left. The gutter stays in place when the code scrolls horizontally. Text selected and copied from the code contains the source text exactly: no line numbers and no added blank lines.
 - **Highlighting.** The element highlights code in the [bundled languages](#languages), chosen from the `language` field of the entry or the file name. The text is shown plain at once and highlighted as soon as highlighting finishes. Highlighting runs in portions, so it never blocks the page for long, and a newer version of the file cancels the highlighting of an older one. Files over 20,000 lines are shown without highlighting. A file in another language is shown as plain text.
-- **Wrapping.** By default long lines scroll horizontally. With `wrap`, they wrap at the width of the pane, with continuation lines aligned to the start of the code and the line number on the first row only.
+- **Wrapping.** By default long lines scroll horizontally. With `wrap`, they wrap at the width of the pane, with the line number on the first row only. Continuation rows keep the indentation of their line, as in VS Code, so nested code stays nested; a tab counts to the next 4-column stop, and the indentation is capped at 40% of the pane width so deeply nested lines keep room.
 - **Typography.** Code uses the monospace font, with tab stops every 4 characters.
 
 ### Line selection

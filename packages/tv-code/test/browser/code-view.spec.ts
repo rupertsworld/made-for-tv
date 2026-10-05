@@ -73,6 +73,50 @@ test("wrapping aligns continuation lines and gutter remains sticky", async ({ pa
   expect(await page.locator(".cv-line").first().evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(20);
 });
 
+test("wrapped continuation rows keep the indentation of their line", async ({ page }) => {
+  const long = "word ".repeat(80);
+  await page.evaluate(text => {
+    const view = (window as any).view;
+    view.wrap = true;
+    view.show({ text, languageId: null });
+  }, `${long}\n    ${long}\n\t\t${long}\n${" ".repeat(200)}${long}`);
+  // The left edge of the first and second visual rows of a line's text.
+  const rows = (line: number) => page.locator(`.cv-line[data-line="${line}"] .cv-code-text`).evaluate(element => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const rects = [...range.getClientRects()].filter(rect => rect.width > 0);
+    const firstText = element.textContent!.search(/\S/);
+    const textRange = document.createRange();
+    textRange.setStart(element.firstChild!, firstText);
+    textRange.setEnd(element.firstChild!, firstText + 1);
+    const tops = [...new Set(rects.map(rect => Math.round(rect.top)))].sort((a, b) => a - b);
+    const second = rects.filter(rect => Math.round(rect.top) === tops[1]).sort((a, b) => a.left - b.left)[0];
+    return { text: textRange.getBoundingClientRect().left, continuation: second.left, start: element.getBoundingClientRect().left };
+  });
+  const flat = await rows(1);
+  const spaces = await rows(2);
+  const tabs = await rows(3);
+  const deep = await rows(4);
+  // An unindented line wraps to the start of the code.
+  expect(flat.continuation).toBeCloseTo(flat.text, 0);
+  // Indented lines wrap to where their text starts, for spaces and for tabs.
+  expect(spaces.continuation).toBeCloseTo(spaces.text, 0);
+  expect(tabs.continuation).toBeCloseTo(tabs.text, 0);
+  expect(tabs.text).toBeGreaterThan(spaces.text);
+  // The line number stays on the first row of a wrapped line.
+  const number = await page.locator('.cv-line-number[data-line="2"]').evaluate(element => {
+    const row = element.closest(".cv-line")!.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const box = element.getBoundingClientRect();
+    return { rowTop: row.top, numberTop: box.top + parseFloat(getComputedStyle(element).paddingTop), lineHeight: parseFloat(getComputedStyle(element).lineHeight), content: getComputedStyle(element).alignItems };
+  });
+  expect(number.content).toBe("flex-start");
+  // A very deep indentation is capped, so continuation rows keep room.
+  const width = await page.locator(".cv-code-view").evaluate(element => element.clientWidth);
+  expect(deep.continuation - deep.start).toBeLessThan(width * 0.5);
+});
+
 test("line clicks, shift ranges, clearing and programmatic scrolling", async ({ page }) => {
   await page.evaluate(() => (window as any).view.show({ text: Array.from({ length: 100 }, (_, n) => `line ${n + 1}`).join("\n"), languageId: null }));
   await page.locator('.cv-line-number[data-line="3"]').click();

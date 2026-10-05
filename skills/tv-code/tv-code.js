@@ -11158,6 +11158,8 @@ class CodeView {
       const code = row.lastElementChild;
       if (fragments == null ? void 0 : fragments[index]) code.append(fragments[index]);
       else code.textContent = lines[index];
+      const indent = indentColumns(lines[index]);
+      if (indent) code.style.setProperty("--cv-indent", String(indent));
       if (index < lines.length - 1) code.append(this.lineBreak());
       row.dataset.line = String(number2);
       block.append(row);
@@ -11268,6 +11270,15 @@ class CodeView {
     if (this.markTimer) clearTimeout(this.markTimer);
     this.markTimer = null;
   }
+}
+function indentColumns(line) {
+  let columns = 0;
+  for (const character of line) {
+    if (character === " ") columns++;
+    else if (character === "	") columns += 4 - columns % 4;
+    else break;
+  }
+  return columns;
 }
 const icon = (body2) => `<svg class="cv-icon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${body2}</svg>`;
 const icons = {
