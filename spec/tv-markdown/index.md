@@ -152,7 +152,7 @@ The page keeps the content current as the document changes. This is supported wh
 
 ### Following links
 
-Clicking a link to another document opens it inside the page, with Back and Forward returning to earlier documents. This is supported when the target is a document the page can load the same way as the current one: a relative link that resolves on the same server, or a wikilink whose meaning the environment documents, such as a path from the root of a vault. Other links keep their normal behaviour, and wikilinks whose meaning is not documented stay without an address.
+Clicking a link to another document opens it inside the page and adds an entry to the page history with `history.pushState`, so that Back and Forward return to earlier documents. Television provides Back and Forward for every artifact and follows these history entries; the page adds no Back or Forward controls of its own. This is supported when the target is a document the page can load the same way as the current one: a relative link that resolves on the same server, or a wikilink whose meaning the environment documents, such as a path from the root of a vault. Other links keep their normal behaviour, and wikilinks whose meaning is not documented stay without an address.
 
 ## Left to the page
 
