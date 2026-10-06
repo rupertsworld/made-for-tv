@@ -50,7 +50,7 @@ The catalog presents books as a semantic list of cards in the supplied order. Th
 
 Each card shows a cover, the complete title, the authors and the brief description. Optional genre and rating are shown when supplied. Publication date, page count and URL property belong in the detail view. Missing authors are identified as `Unknown author`.
 
-A missing, rejected or failed cover image is replaced with a generated cover showing the title and author text. The fallback requires no network request or external image service and remains legible in light and dark colour schemes. Cover images keep their aspect ratio within a consistent cover area. Images and generated covers are decorative to assistive technology because the title and authors are also provided as text.
+A missing, rejected or failed cover image is replaced with a generated cover showing the title and author text. The fallback requires no network request or external image service and remains legible in light and dark colour schemes. Cover images fill a consistent cover area without distortion; the edges of an image whose shape differs from the area are cropped. Images and generated covers are decorative to assistive technology because the title and authors are also provided as text.
 
 Each card has one native button that activates the book, with an accessible name identifying the title and authors. Cards have no nested links or other interactive controls. The button carries `data-book-id` with the exact stable identifier; the page can locate it after a render to restore focus. Identifiers are data, not CSS selectors or HTML markup.
 

@@ -236,7 +236,7 @@ test('covers resolve relative URLs, fail locally to decorative generated covers 
   });
   await expect(page.locator('img')).toHaveAttribute('alt', '');
   await expect(page.locator('img')).toHaveJSProperty('naturalWidth', 400);
-  expect(await page.locator('img').evaluate(image => getComputedStyle(image).objectFit)).toBe('contain');
+  expect(await page.locator('img').evaluate(image => getComputedStyle(image).objectFit)).toBe('cover');
 });
 
 test('full detail preserves plain description lines and source links keep ordinary and modifier navigation without requests', async ({ page, context }) => {

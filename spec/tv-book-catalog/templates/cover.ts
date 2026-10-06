@@ -39,7 +39,7 @@ const coverRules = `:where(tv-book-catalog, tv-book-detail) :where(.bc-cover) {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   background: var(--_surface);
 }
 @media (prefers-reduced-motion: reduce) {
