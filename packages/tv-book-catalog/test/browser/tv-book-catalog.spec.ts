@@ -1,5 +1,5 @@
 /** Chromium tests exercise shipped assets, native controls and page-owned history/focus. */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import template from '../../../../spec/tv-book-catalog/templates/tv-book-catalog';
 import type { Book, TvBookCatalogElement, TvBookDetailElement } from '../../src/tv-book-catalog';
@@ -41,9 +41,10 @@ async function isolate(page: Page): Promise<void> {
   });
 }
 
-test('ships the composed CSS and a standalone module', async ({ page }) => {
+test('ships the composed CSS and a standalone module without an empty notices placeholder', async ({ page }) => {
   expect(readFileSync('skills/tv-book-catalog/tv-book-catalog.css', 'utf8'))
     .toBe([...new Set(template.style)].join('\n'));
+  expect(existsSync('skills/tv-book-catalog/THIRD-PARTY-NOTICES.txt')).toBe(false);
   await ready(page);
   expect(await page.evaluate(async url => {
     const first = customElements.get('tv-book-catalog');

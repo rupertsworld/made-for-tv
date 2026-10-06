@@ -47,7 +47,7 @@ Each skill has one name, used for its specification folder, package folder, pack
 - the element CSS: `spec/tv-markdown/style.css` copied unchanged, or, for a skill with templates, the style list of the element template joined by `stylesheet()` from `spec/types.ts`. The tv-code build then appends the tv-markdown stylesheet for rendered Markdown files;
 - `SKILL.md`, copied from the package.
 
-Third-party licence notices for bundled code are deferred until the skills are distributed beyond Rupert.
+When the Vite module graph contains third-party code, the build also emits `THIRD-PARTY-NOTICES.txt`. It contains the published licence files of every bundled npm package and the separate upstream terms supplied for any bundled Shiki TextMate grammars or themes. The build emits no notices file when the module graph contains no third-party code.
 
 A built skill is self-contained. An agent installs it by copying or linking `skills/<skill>/` into its skills directory, and an artifact copies the JavaScript and CSS next to its `index.html`.
 

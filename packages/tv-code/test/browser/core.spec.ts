@@ -1,4 +1,5 @@
 /** Reader-visible contracts for the built element. */
+import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
 async function ready(page: Page, markup = "<tv-code></tv-code>"): Promise<void> {
@@ -12,6 +13,43 @@ async function setFiles(page: Page, files: object): Promise<void> {
 }
 
 const row = (page: Page, path: string) => page.locator('tv-code .cv-row').filter({ has: page.locator(`.cv-row-name:text-is("${path.split("/").at(-1)}")`) });
+
+test("ships package and grammar notices for the bundled highlighter and Markdown renderer", () => {
+  const notices = readFileSync("skills/tv-code/THIRD-PARTY-NOTICES.txt", "utf8");
+  const packages = [
+    "@shikijs/core", "@shikijs/engine-javascript", "@shikijs/langs",
+    "@shikijs/primitive", "@shikijs/types", "@shikijs/vscode-textmate",
+    "ccount", "character-entities-html4", "character-entities-legacy",
+    "comma-separated-tokens", "dompurify", "hast-util-to-html",
+    "hast-util-whitespace", "html-void-elements", "marked", "oniguruma-parser",
+    "oniguruma-to-es", "property-information", "regex", "regex-recursion",
+    "regex-utilities", "shiki", "space-separated-tokens", "stringify-entities",
+    "yaml", "zwitch",
+  ];
+  for (const packageName of packages) {
+    expect(notices).toMatch(new RegExp(`^${packageName.replace("/", "\\/")}@`, "m"));
+  }
+  expect(notices).toContain("BUNDLED TEXTMATE GRAMMARS (45)");
+  const grammarSection = notices.split("BUNDLED TEXTMATE GRAMMARS (45)")[1]
+    .split("UPSTREAM COPYRIGHT AND LICENCE TEXTS")[0];
+  const grammars = [...grammarSection.matchAll(/^-{80}\n([^\n]+)\nLicense: /gm)]
+    .map(match => match[1]);
+  expect(grammars).toEqual([
+    "c", "cpp", "cpp-macro", "csharp", "css", "diff", "docker", "glsl", "go",
+    "graphql", "haml", "html", "html-derivative", "ini", "java", "javascript",
+    "json", "jsonc", "jsx", "kotlin", "less", "lua", "make", "markdown",
+    "markdown-vue", "postcss", "powershell", "python", "regexp", "ruby", "rust",
+    "scss", "shellscript", "sql", "svelte", "swift", "toml", "tsx", "typescript",
+    "vue", "vue-directives", "vue-interpolations", "vue-sfc-style-variable-injection",
+    "xml", "yaml",
+  ]);
+  expect(notices).toContain("Copyright (c) 2015 - present Microsoft Corporation");
+  expect(notices).toMatch(/^toml\nLicense: TextMate bundle licence$/m);
+  expect(notices).toMatch(/^yaml\nLicense: TextMate bundle licence$/m);
+  expect(notices).toContain("Permission to copy, use, modify, sell and distribute this");
+  expect(notices).toMatch(/^glsl\nLicense: None stated by the source repository$/m);
+  expect(notices).not.toContain("BUNDLED TEXTMATE THEMES");
+});
 
 test("child tags show nested relative paths, dedented scripts and live edits", async ({ page }) => {
   await ready(page, '<tv-code><tv-code-folder path="src"><tv-code-file path="a.ts"><script type="text/plain">\n  one\n</script></tv-code-file></tv-code-folder><tv-code-file path="other.txt">Other</tv-code-file></tv-code>');

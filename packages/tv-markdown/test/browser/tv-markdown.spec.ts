@@ -1,4 +1,5 @@
 /** Browser contract tests load the same built JavaScript and CSS that an artifact copies. */
+import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
 async function ready(page: Page): Promise<void> {
@@ -13,6 +14,13 @@ async function setMarkdown(page: Page, markdown: string): Promise<void> {
     element.markdown = source;
   }, markdown);
 }
+
+test('ships notices for every bundled third-party package', () => {
+  const notices = readFileSync('skills/tv-markdown/THIRD-PARTY-NOTICES.txt', 'utf8');
+  for (const packageName of ['dompurify', 'marked', 'yaml']) {
+    expect(notices).toMatch(new RegExp(`^${packageName.replace('/', '\\/')}@`, 'm'));
+  }
+});
 
 test('the markdown property renders immediately, reads back, and clears on empty or nullish values', async ({ page }) => {
   await ready(page);

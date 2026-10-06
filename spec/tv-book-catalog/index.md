@@ -144,6 +144,8 @@ The built skill in `skills/tv-book-catalog/` contains:
 - `tv-book-catalog.js`: one self-contained ES module defining both elements, with no runtime dependencies;
 - `tv-book-catalog.css`: the distinct CSS strings in the default-exported element template, joined in order for both elements;
 
+The build emits no `THIRD-PARTY-NOTICES.txt` for this skill because its module graph contains no third-party code.
+
 The [repository specification](../index.md) defines package layout, tools, build output and testing conventions. The [tv-markdown specification](../tv-markdown/index.md) supplies the existing convention for documenting a light-DOM artifact element, page-owned behaviour and CSS held in a template; it is not a runtime dependency. Neither `tv-markdown` nor another Television skill is needed to render descriptions or navigate between these two views.
 
 The source package is one private package named `tv-book-catalog` in `packages/tv-book-catalog/`, containing `package.json` with a `build` script, `SKILL.md`, TypeScript source in `src/`, tests in `test/` and build configuration. Main built filenames and the specification, package and built folders all use `tv-book-catalog`, as required by the repository convention. Both elements belong to this single package and built skill; detail is not a separate package.

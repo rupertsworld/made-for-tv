@@ -3,6 +3,7 @@ import { copyFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+import { skillNotices } from "../../scripts/skill-notices.mjs";
 
 const packageDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(packageDirectory, "../..");
@@ -11,6 +12,7 @@ const outputDirectory = path.join(repositoryRoot, "skills", "tv-markdown");
 export default defineConfig({
   root: packageDirectory,
   plugins: [
+    skillNotices(),
     {
       name: "copy-skill-files",
       closeBundle() {

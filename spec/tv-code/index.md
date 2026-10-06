@@ -372,6 +372,7 @@ The built skill, in `skills/tv-code/`, contains:
 
 - `SKILL.md`: when to use the skill; how to load it (copy `tv-code.js` and `tv-code.css` next to the artifact `index.html`); the three inputs with short examples; connecting a service through a connection and its change signal through `refresh`; keeping the selection in the address; and the attributes and events;
 - `tv-code.js`, with the highlighter, its languages and `tv-markdown` bundled;
-- `tv-code.css`, the specification stylesheet followed by the `tv-markdown` stylesheet.
+- `tv-code.css`, the specification stylesheet followed by the `tv-markdown` stylesheet;
+- `THIRD-PARTY-NOTICES.txt`, with the licences for bundled npm packages and the upstream TextMate grammars carried by Shiki.
 
 The package, in `packages/tv-code/`, depends on the `tv-markdown` package in this repository for the Markdown element. It holds the element code, `SKILL.md` and tests: unit tests for logic with real branching, such as path handling, ordering and dim patterns, language detection, matching in the finder and the comparison of file versions, and browser tests for every behaviour a reader can observe. The independent templates under [`templates/`](templates/) specify the interface markup that tv-code builds: the shell, sidebar tree, pane header and finder. They receive highlighted code, rendered Markdown and image HTML as data; Shiki and tv-markdown produce that content, as specified in the [Code](#code) and [Markdown](#markdown) sections. Storybook shows each view and useful parts without importing package source. Browser comparisons check the built interface against the templates. The repository layout and build are specified in [the repository specification](../index.md).

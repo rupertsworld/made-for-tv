@@ -1,7 +1,9 @@
 /** Light-DOM contract tests for record data, state transitions and safe destinations. */
 // @vitest-environment jsdom
+import path from 'node:path';
 import { beforeEach, expect, it } from 'vitest';
 import { TvBookCatalogElement, TvBookDetailElement, type Book } from '../../src/tv-book-catalog';
+import { skillNotices } from '../../../../scripts/skill-notices.mjs';
 
 const book: Book = Object.freeze({ id: 'odd " ] # <id>', title: '<img src=x onerror=alert(1)>',
   authors: Object.freeze(['First', 'Second']), description: '<b>Not HTML</b>\nSecond line',
@@ -195,4 +197,20 @@ it('detail renders and clears synchronously after each data and state assignment
   expect(snapshots.slice(1)).toEqual(['No book selected.', 'No book selected.',
     'Loading book…', '<script>Plain message</script>']);
   expect(detail.querySelector('script')).toBeNull();
+});
+
+it('emits package licences from the module graph and no placeholder for an empty graph', async () => {
+  const outputs: { fileName: string; source: string }[] = [];
+  const plugin = skillNotices();
+  const emitFile = (asset: { fileName: string; source: string }) => outputs.push(asset);
+  await plugin.generateBundle.call({ emitFile }, {}, {});
+  expect(outputs).toEqual([]);
+  const modules = [path.resolve('node_modules/marked/lib/marked.esm.js'),
+    path.resolve('node_modules/yaml/browser/dist/index.js')];
+  await plugin.generateBundle.call({ emitFile, getModuleIds: () => modules.values() }, {}, {});
+  expect(outputs).toHaveLength(1);
+  expect(outputs[0]).toMatchObject({ fileName: 'THIRD-PARTY-NOTICES.txt' });
+  expect(outputs[0].source).toMatch(/^marked@/m);
+  expect(outputs[0].source).toMatch(/^yaml@/m);
+  expect(outputs[0].source).not.toContain('No third-party code is bundled');
 });
