@@ -1,6 +1,6 @@
 # tv-skills — repository specification
 
-`tv-skills` is a private, local repository for iterating on Television artifact skills: writing their specifications, building them, using the built skills directly, and moving a skill into Television by pull request once it is ready. The original Television skills stay in the Television repository. This document specifies how the repository is laid out, built and tested.
+`tv-skills` is a public repository of skills for building Television artifacts. It holds the specification, source, tests and built files of each skill. The skills that ship with Television, such as `tv-calendar`, stay in the Television repository. This document specifies how the repository is laid out, built and tested, and how the README screenshots are made.
 
 ## Layout
 
@@ -25,8 +25,13 @@ storybook/
   stories/
     *.stories.ts             Storybook views of specifications and parts
 test/                        repository-wide unit tests
+scripts/                     test runners, the screenshot script and its book covers
 skills/
   <skill>/                   the built skill
+docs/
+  screenshots/               images of each skill shown in the README
+README.md                    what each skill does and how to install it
+LICENSE                      the MIT licence
 package.json                 the root workspace
 tsconfig.spec.json           typechecks templates, Storybook and root tests
 ```
@@ -77,6 +82,14 @@ A template composes another by calling its `render` and listing its `style`. Rep
 `npm run storybook` opens Storybook with the configuration in `storybook/`. Stories show specifications, not production code: they import templates, `style.css` files and sample data from `storybook/sample-*.ts`, and nothing from `packages/` or `skills/`.
 
 Each story pairs a template with a demo page: an object of the same shape, whose options hold page settings such as scheme, width and overrides, and whose `render(args, element)` wraps the element markup. `story()` in `storybook/helpers.ts` builds controls and defaults from both option lists, adopts both style lists as constructable stylesheets on each render, and renders the element inside the page. The tv-markdown story builds a template-shaped object from `style.css` and sample HTML. A story also renders alone at `iframe.html?id=<story-id>&args=<arguments>`.
+
+## Screenshots
+
+`npm run screenshots` runs `scripts/screenshots.mjs`, which renders each built skill with sample content and saves `docs/screenshots/<skill>-light.png` and `<skill>-dark.png`. The README shows the image that matches the colour scheme of the reader. After a change to how a skill looks, run the script and commit the new images with the change.
+
+- The pages load the Television canonical stylesheet from the `@telepath-computer/television` development dependency, so the images show the skills as they look in Television.
+- Each image is the same square with a rounded border and transparent corners. The border is drawn into the image because GitHub removes styles from README markup.
+- The book covers are public-domain first-edition covers from Wikimedia Commons, stored in `scripts/screenshot-covers/`. The script records the source of each.
 
 ## Git
 
