@@ -231,7 +231,7 @@ The element decides how to show a file from its name and, when needed, its bytes
 
 Rendered Markdown uses the bundled `tv-markdown` element with its frontmatter panel shown, so the page matches other Markdown in Television. Rendered content is limited to a readable width and centred in the pane. Code blocks with a language are highlighted in the same colours as code files.
 
-Relative image addresses in rendered Markdown are resolved against the folder of the Markdown file. An image that resolves to a file in the set is loaded from its `src` or through `read`. Other image addresses are left as written.
+Relative image addresses in rendered Markdown are resolved against the folder of the Markdown file. A resolved file is loaded from its `src`, inline content or through `read`. When a connection provides `list` and the path is not yet known, the viewer lists only the unlisted folders along the path before deciding whether it is a file; this does not expand, focus or scroll the file tree. If the resolved path is not a file, the image address remains as written.
 
 #### Links in rendered Markdown
 

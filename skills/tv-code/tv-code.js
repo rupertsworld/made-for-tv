@@ -361,12 +361,12 @@ class Loader {
       this.openEpoch++;
     }
   }
-  /** List a folder once unless explicitly forced by refresh or Retry. */
+  /** List a folder once unless forced; await a newer listing queued before the current one finishes. */
   list(path, force = false) {
     var _a2;
     const existing = this.lists.get(path);
     if (existing) {
-      if (!force) return existing;
+      if (!force) return existing.then(() => this.forcedLists.get(path) ?? void 0);
       const queued = this.forcedLists.get(path);
       if (queued) return queued;
       const generation2 = this.generation;
@@ -397,7 +397,7 @@ class Loader {
       if (this.lists.get(path) === pending) this.lists.delete(path);
     });
     this.lists.set(path, pending);
-    return pending;
+    return force ? pending : pending.then(() => this.forcedLists.get(path) ?? void 0);
   }
   /** Read a file at most once concurrently; stale open-file responses are ignored. */
   async read(path, wanted = "text", showAnyway = false, force = false) {
@@ -464,14 +464,16 @@ class Loader {
         const missingOpen = !!this.openFile && !this.model.get(this.openFile);
         if (all2 && this.connection.list) {
           for (const node of this.model.values()) {
-            if (node.type === "folder" && (node.listing === "listed" || node.listing === "failed")) listed.add(node.path);
+            if (node.type === "folder" && node.listing !== "unlisted") listed.add(node.path);
           }
         } else {
           for (const path2 of paths) {
-            const parent = parentPath(path2);
             if (this.connection.list) {
-              if (["listed", "failed"].includes(((_a2 = this.model.get(parent)) == null ? void 0 : _a2.listing) ?? "")) listed.add(parent);
-              if (((_b2 = this.model.get(path2)) == null ? void 0 : _b2.type) === "folder" && ["listed", "failed"].includes(((_c2 = this.model.get(path2)) == null ? void 0 : _c2.listing) ?? "")) listed.add(path2);
+              let folder = parentPath(path2);
+              while (folder && ((_a2 = this.model.get(folder)) == null ? void 0 : _a2.type) !== "folder") folder = parentPath(folder);
+              const folderNode = this.model.get(folder);
+              if ((folderNode == null ? void 0 : folderNode.type) === "folder" && ["listing", "listed", "failed"].includes(folderNode.listing)) listed.add(folder);
+              if (((_b2 = this.model.get(path2)) == null ? void 0 : _b2.type) === "folder" && ["listing", "listed", "failed"].includes(((_c2 = this.model.get(path2)) == null ? void 0 : _c2.listing) ?? "")) listed.add(path2);
             }
             if (path2 === this.openFile) readOpen = true;
           }
@@ -21004,11 +21006,27 @@ class MarkdownView {
       const address = image.getAttribute("src") ?? "";
       if (!address || /^(?:[a-z][a-z\d+.-]*:|\/|#)/i.test(address)) continue;
       const path = resolvePath(parentPath(this.path), decodeAddress(address.split(/[?#]/)[0]));
-      if (!this.hasImage(path)) continue;
-      const group = this.images.get(path) ?? /* @__PURE__ */ new Set();
-      group.add(image);
-      this.images.set(path, group);
-      this.loadImage(image, path, false, signal);
+      const available = this.hasImage(path, signal);
+      if (typeof available === "boolean") {
+        if (!available) continue;
+        this.registerImage(image, path);
+        this.loadImage(image, path, false, signal, true);
+        continue;
+      }
+      const version = (this.imageVersions.get(image) ?? 0) + 1;
+      this.imageVersions.set(image, version);
+      image.removeAttribute("src");
+      void available.then((exists) => {
+        if (signal.aborted || version !== this.imageVersions.get(image)) return;
+        if (!exists) {
+          image.setAttribute("src", address);
+          return;
+        }
+        this.registerImage(image, path);
+        this.loadImage(image, path, false, signal, true);
+      }).catch(() => {
+        if (!signal.aborted && version === this.imageVersions.get(image)) image.setAttribute("src", address);
+      });
     }
     for (const anchor of this.element.querySelectorAll("a[href]")) {
       const href = anchor.getAttribute("href") ?? "";
@@ -21026,15 +21044,19 @@ class MarkdownView {
   reloadImage(path) {
     for (const image of this.images.get(path) ?? []) this.loadImage(image, path, true, this.controller.signal);
   }
-  loadImage(image, path, force, signal) {
+  registerImage(image, path) {
+    const group = this.images.get(path) ?? /* @__PURE__ */ new Set();
+    group.add(image);
+    this.images.set(path, group);
+  }
+  loadImage(image, path, force, signal, available = this.hasImage(path, signal)) {
     const version = (this.imageVersions.get(image) ?? 0) + 1;
     this.imageVersions.set(image, version);
     const previousUrl = this.imageUrls.get(image);
     if (previousUrl) URL.revokeObjectURL(previousUrl);
     this.imageUrls.delete(image);
     image.removeAttribute("src");
-    if (!this.hasImage(path)) return;
-    void this.resolveImage(path, force).then((source) => {
+    void Promise.resolve(available).then((exists) => exists ? this.resolveImage(path, force) : null).then((source) => {
       if (signal.aborted || version !== this.imageVersions.get(image) || !source) return;
       if ("src" in source) image.src = source.src;
       else {
@@ -21310,9 +21332,9 @@ class Pane {
             var _a3;
             return ((_a3 = this.resolveImage) == null ? void 0 : _a3.call(this, image, force)) ?? Promise.resolve(null);
           },
-          (image) => {
+          (image, signal) => {
             var _a3;
-            return ((_a3 = this.hasImage) == null ? void 0 : _a3.call(this, image)) ?? false;
+            return ((_a3 = this.hasImage) == null ? void 0 : _a3.call(this, image, signal)) ?? false;
           }
         );
         this.replaceBody(markdown2.element, markdown2);
@@ -22764,10 +22786,7 @@ class TvCodeElement extends HTMLElement {
     pane.onLinesChange = (lines) => this.setLines(formatLines(lines), true, false);
     pane.onMappedLines = (lines) => this.setLines(formatLines(lines), false, false);
     pane.resolveImage = (path, force) => this.resolveImage(path, force);
-    pane.hasImage = (path) => {
-      var _a2;
-      return ((_a2 = this.model.get(path)) == null ? void 0 : _a2.type) === "file";
-    };
+    pane.hasImage = (path, signal) => this.hasImage(path, signal);
     pane.setWrap(this.wrap);
     pane.setShowSource(this.showSource);
     const finder = new Finder({
@@ -23089,6 +23108,30 @@ class TvCodeElement extends HTMLElement {
     if (this.activeInput !== "connection") return null;
     const result = await this.loader.read(path, "bytes", false, force);
     return (result == null ? void 0 : result.kind) === "bytes" ? { blob: result.blob } : null;
+  }
+  hasImage(path, signal) {
+    var _a2, _b2;
+    const entry = this.model.get(path);
+    if (entry) return entry.type === "file";
+    if (((_a2 = this.model.get(parentPath(path))) == null ? void 0 : _a2.listing) === "listed") return false;
+    if (this.activeInput !== "connection" || !((_b2 = this.connectionValue) == null ? void 0 : _b2.list)) return false;
+    const epoch = this.inputEpoch;
+    return (async () => {
+      var _a3, _b3;
+      let folder = "";
+      for (const segment of path.split("/")) {
+        if (signal.aborted || epoch !== this.inputEpoch) return false;
+        const parent = this.model.get(folder);
+        if (!parent || parent.type !== "folder") return false;
+        if (parent.listing !== "listed") await this.loader.list(folder);
+        if (signal.aborted || epoch !== this.inputEpoch) return false;
+        const next = folder ? `${folder}/${segment}` : segment;
+        if (next === path) return ((_a3 = this.model.get(next)) == null ? void 0 : _a3.type) === "file";
+        if (((_b3 = this.model.get(next)) == null ? void 0 : _b3.type) !== "folder") return false;
+        folder = next;
+      }
+      return false;
+    })();
   }
   scrollToMarkdownHeading(path, fragment) {
     var _a2;

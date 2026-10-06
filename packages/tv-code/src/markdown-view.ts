@@ -13,7 +13,7 @@ export class MarkdownView {
   private imageVersions = new WeakMap<HTMLImageElement, number>();
   private images = new Map<string, Set<HTMLImageElement>>();
 
-  constructor(private path: string, text: string, private resolveImage: (path: string, force: boolean) => Promise<ImageSource | null>, private hasImage: (path: string) => boolean) {
+  constructor(private path: string, text: string, private resolveImage: (path: string, force: boolean) => Promise<ImageSource | null>, private hasImage: (path: string, signal: AbortSignal) => boolean | Promise<boolean>) {
     // Keep the workspace package as a runtime import in the single-file build.
     // Its own registration guard handles a page that loaded tv-markdown first.
     if (!customElements.get("tv-markdown")) customElements.define("tv-markdown", TvMarkdownElement);
@@ -56,11 +56,24 @@ export class MarkdownView {
       const address = image.getAttribute("src") ?? "";
       if (!address || /^(?:[a-z][a-z\d+.-]*:|\/|#)/i.test(address)) continue;
       const path = resolvePath(parentPath(this.path), decodeAddress(address.split(/[?#]/)[0]));
-      if (!this.hasImage(path)) continue;
-      const group = this.images.get(path) ?? new Set<HTMLImageElement>();
-      group.add(image);
-      this.images.set(path, group);
-      this.loadImage(image, path, false, signal);
+      const available = this.hasImage(path, signal);
+      if (typeof available === "boolean") {
+        if (!available) continue;
+        this.registerImage(image, path);
+        this.loadImage(image, path, false, signal, true);
+        continue;
+      }
+      const version = (this.imageVersions.get(image) ?? 0) + 1;
+      this.imageVersions.set(image, version);
+      image.removeAttribute("src");
+      void available.then(exists => {
+        if (signal.aborted || version !== this.imageVersions.get(image)) return;
+        if (!exists) { image.setAttribute("src", address); return; }
+        this.registerImage(image, path);
+        this.loadImage(image, path, false, signal, true);
+      }).catch(() => {
+        if (!signal.aborted && version === this.imageVersions.get(image)) image.setAttribute("src", address);
+      });
     }
     for (const anchor of this.element.querySelectorAll<HTMLAnchorElement>("a[href]")) {
       const href = anchor.getAttribute("href") ?? "";
@@ -79,7 +92,13 @@ export class MarkdownView {
     for (const image of this.images.get(path) ?? []) this.loadImage(image, path, true, this.controller.signal);
   }
 
-  private loadImage(image: HTMLImageElement, path: string, force: boolean, signal: AbortSignal): void {
+  private registerImage(image: HTMLImageElement, path: string): void {
+    const group = this.images.get(path) ?? new Set<HTMLImageElement>();
+    group.add(image);
+    this.images.set(path, group);
+  }
+
+  private loadImage(image: HTMLImageElement, path: string, force: boolean, signal: AbortSignal, available: boolean | Promise<boolean> = this.hasImage(path, signal)): void {
     const version = (this.imageVersions.get(image) ?? 0) + 1;
     this.imageVersions.set(image, version);
     const previousUrl = this.imageUrls.get(image);
@@ -87,8 +106,7 @@ export class MarkdownView {
     this.imageUrls.delete(image);
     // Remove the unresolved relative address before the browser can fetch it.
     image.removeAttribute("src");
-    if (!this.hasImage(path)) return;
-    void this.resolveImage(path, force).then(source => {
+    void Promise.resolve(available).then(exists => exists ? this.resolveImage(path, force) : null).then(source => {
       if (signal.aborted || version !== this.imageVersions.get(image) || !source) return;
       if ("src" in source) image.src = source.src;
       else {

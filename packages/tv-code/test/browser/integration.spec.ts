@@ -620,6 +620,120 @@ test("Markdown connection images use bytes, retain alt text on failure, and revo
   await expect.poll(() => page.evaluate(url => (window as any).revoked.includes(url), nextUrl)).toBe(true);
 });
 
+test("Markdown lists unopened folders to load a nested connection image without expanding the tree", async ({ page }) => {
+  await ready(page);
+  await page.locator("tv-code").evaluate(viewer => {
+    const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6A3sAAAAASUVORK5CYII="), char => char.charCodeAt(0));
+    (window as any).listCalls = [];
+    (window as any).readCalls = [];
+    (viewer as any).connection = {
+      list: (path: string) => {
+        (window as any).listCalls.push(path);
+        if (path === "") return [{ name: "README.md" }, { name: "docs", type: "folder" }];
+        if (path === "docs") return [{ name: "shots", type: "folder" }];
+        if (path === "docs/shots") return [{ name: "a.png" }];
+        return [];
+      },
+      read: (path: string) => {
+        (window as any).readCalls.push(path);
+        return path === "README.md" ? '<picture><img alt="nested" src="docs/shots/a.png"><img alt="duplicate" src="docs/shots/a.png"></picture>' : png;
+      },
+    };
+  });
+  const image = page.locator('tv-markdown img[alt="nested"]');
+  await expect(image).toHaveAttribute("src", /^blob:/);
+  await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  const duplicate = page.locator('tv-markdown img[alt="duplicate"]');
+  await expect(duplicate).toHaveAttribute("src", /^blob:/);
+  await expect.poll(() => duplicate.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => (window as any).listCalls)).toEqual(["", "docs", "docs/shots"]);
+  expect(await page.evaluate(() => (window as any).readCalls)).toEqual(["README.md", "docs/shots/a.png"]);
+  await expect(page.locator('.cv-row[data-path="docs"]')).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator('.cv-row[data-path="docs/shots"]')).toHaveCount(0);
+});
+
+test("Markdown restores a missing nested connection image address after listing", async ({ page }) => {
+  await ready(page);
+  await page.locator("tv-code").evaluate(viewer => {
+    (window as any).listCalls = [];
+    (viewer as any).connection = {
+      list: (path: string) => {
+        (window as any).listCalls.push(path);
+        if (path === "") return [{ name: "README.md" }, { name: "docs", type: "folder" }];
+        if (path === "docs") return [{ name: "shots", type: "folder" }];
+        if (path === "docs/shots") return [];
+        return [];
+      },
+      read: (path: string) => path === "README.md" ? '<img alt="missing" src="docs/shots/missing.png?raw=1#crop">' : Promise.reject(new Error("Unexpected read")),
+    };
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).listCalls)).toEqual(["", "docs", "docs/shots"]);
+  await expect(page.locator('tv-markdown img[alt="missing"]')).toHaveAttribute("src", "docs/shots/missing.png?raw=1#crop");
+  await expect(page.locator(".cv-failure")).toHaveCount(0);
+});
+
+test("a newer Markdown render ignores a stale nested image listing", async ({ page }) => {
+  await ready(page);
+  await page.locator("tv-code").evaluate(viewer => {
+    const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6A3sAAAAASUVORK5CYII="), char => char.charCodeAt(0));
+    (window as any).markdown = "![old](docs/old.png)";
+    (window as any).readCalls = [];
+    (viewer as any).connection = {
+      list: (path: string) => {
+        if (path === "") return [{ name: "README.md" }, { name: "docs", type: "folder" }, { name: "fresh.png" }];
+        if (path === "docs") return new Promise(resolve => { (window as any).finishOldListing = resolve; });
+        return [];
+      },
+      read: (path: string) => {
+        (window as any).readCalls.push(path);
+        return path === "README.md" ? (window as any).markdown : path === "fresh.png" ? png : Promise.reject(new Error("Stale image was read"));
+      },
+    };
+  });
+  await expect.poll(() => page.evaluate(() => typeof (window as any).finishOldListing)).toBe("function");
+  await page.locator("tv-code").evaluate(viewer => {
+    (window as any).markdown = "![fresh](fresh.png)";
+    (viewer as any).refresh("README.md");
+  });
+  const fresh = page.locator('tv-markdown img[alt="fresh"]');
+  await expect(fresh).toHaveAttribute("src", /^blob:/);
+  await page.evaluate(() => (window as any).finishOldListing([{ name: "old.png" }]));
+  await expect(page.locator('tv-markdown img[alt="old"]')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).readCalls)).toEqual(["README.md", "README.md", "fresh.png"]);
+});
+
+test("refresh during nested image discovery queues a fresh listing before loading", async ({ page }) => {
+  await ready(page);
+  await page.locator("tv-code").evaluate(viewer => {
+    const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6A3sAAAAASUVORK5CYII="), char => char.charCodeAt(0));
+    (window as any).listCalls = [];
+    (window as any).readCalls = [];
+    (viewer as any).connection = {
+      list: (path: string) => {
+        (window as any).listCalls.push(path);
+        if (path === "") return [{ name: "README.md" }, { name: "docs", type: "folder" }];
+        if (path === "docs" && (window as any).listCalls.filter((call: string) => call === "docs").length === 1)
+          return new Promise(resolve => { (window as any).finishOldImageListing = resolve; });
+        if (path === "docs") return [{ name: "shots", type: "folder" }];
+        return path === "docs/shots" ? [{ name: "a.png" }] : [];
+      },
+      read: (path: string) => {
+        (window as any).readCalls.push(path);
+        return path === "README.md" ? "![refreshed](docs/shots/a.png)" : png;
+      },
+    };
+  });
+  await expect.poll(() => page.evaluate(() => typeof (window as any).finishOldImageListing)).toBe("function");
+  await page.locator("tv-code").evaluate(viewer => { (viewer as any).refresh("docs/shots/a.png"); });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => (window as any).finishOldImageListing([]));
+  const image = page.locator('tv-markdown img[alt="refreshed"]');
+  await expect(image).toHaveAttribute("src", /^blob:/);
+  await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => (window as any).listCalls)).toEqual(["", "docs", "docs", "docs/shots"]);
+  expect(await page.evaluate(() => (window as any).readCalls)).toEqual(["README.md", "docs/shots/a.png"]);
+});
+
 test("the highlighter warms during idle time and over-limit code stays plain", async ({ page }) => {
   await ready(page);
   await page.evaluate(() => {

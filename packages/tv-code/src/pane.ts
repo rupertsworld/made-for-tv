@@ -41,7 +41,7 @@ export class Pane {
   onToggleSource?: () => void;
   onFind?: () => void;
   resolveImage?: (path: string, force: boolean) => Promise<ImageSource | null>;
-  hasImage?: (path: string) => boolean;
+  hasImage?: (path: string, signal: AbortSignal) => boolean | Promise<boolean>;
 
   constructor(private openSidebarButton: HTMLButtonElement) {
     const find = h("button", { className: "cv-button cv-pane-action cv-find", type: "button", title: "Find file", "aria-label": "Find file", onclick: () => this.onFind?.() }, svg(icons.search));
@@ -170,7 +170,7 @@ export class Pane {
       else {
         const markdown = new MarkdownView(path, result.text,
           (image, force) => this.resolveImage?.(image, force) ?? Promise.resolve(null),
-          image => this.hasImage?.(image) ?? false);
+          (image, signal) => this.hasImage?.(image, signal) ?? false);
         this.replaceBody(markdown.element, markdown);
       }
     } else if (result.kind === "text") {

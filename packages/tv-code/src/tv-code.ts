@@ -146,7 +146,7 @@ export class TvCodeElement extends HTMLElement {
     pane.onLinesChange = lines => this.setLines(formatLines(lines), true, false);
     pane.onMappedLines = lines => this.setLines(formatLines(lines), false, false);
     pane.resolveImage = (path, force) => this.resolveImage(path, force);
-    pane.hasImage = path => this.model.get(path)?.type === "file";
+    pane.hasImage = (path, signal) => this.hasImage(path, signal);
     pane.setWrap(this.wrap);
     pane.setShowSource(this.showSource);
     const finder = new Finder({
@@ -447,6 +447,29 @@ export class TvCodeElement extends HTMLElement {
     if (this.activeInput !== "connection") return null;
     const result = await this.loader.read(path, "bytes", false, force);
     return result?.kind === "bytes" ? { blob: result.blob } : null;
+  }
+
+  private hasImage(path: string, signal: AbortSignal): boolean | Promise<boolean> {
+    const entry = this.model.get(path);
+    if (entry) return entry.type === "file";
+    if (this.model.get(parentPath(path))?.listing === "listed") return false;
+    if (this.activeInput !== "connection" || !this.connectionValue?.list) return false;
+    const epoch = this.inputEpoch;
+    return (async () => {
+      let folder = "";
+      for (const segment of path.split("/")) {
+        if (signal.aborted || epoch !== this.inputEpoch) return false;
+        const parent = this.model.get(folder);
+        if (!parent || parent.type !== "folder") return false;
+        if (parent.listing !== "listed") await this.loader.list(folder);
+        if (signal.aborted || epoch !== this.inputEpoch) return false;
+        const next = folder ? `${folder}/${segment}` : segment;
+        if (next === path) return this.model.get(next)?.type === "file";
+        if (this.model.get(next)?.type !== "folder") return false;
+        folder = next;
+      }
+      return false;
+    })();
   }
 
   // TvMarkdown dispatches linkclick from its own click listener. A page that

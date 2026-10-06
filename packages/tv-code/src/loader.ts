@@ -51,11 +51,11 @@ export class Loader {
     }
   }
 
-  /** List a folder once unless explicitly forced by refresh or Retry. */
+  /** List a folder once unless forced; await a newer listing queued before the current one finishes. */
   list(path: string, force = false): Promise<void> {
     const existing = this.lists.get(path);
     if (existing) {
-      if (!force) return existing;
+      if (!force) return existing.then(() => this.forcedLists.get(path) ?? undefined);
       const queued = this.forcedLists.get(path);
       if (queued) return queued;
       const generation = this.generation;
@@ -82,7 +82,7 @@ export class Loader {
       this.onChange();
     }).finally(() => { if (this.lists.get(path) === pending) this.lists.delete(path); });
     this.lists.set(path, pending);
-    return pending;
+    return force ? pending : pending.then(() => this.forcedLists.get(path) ?? undefined);
   }
 
   /** Read a file at most once concurrently; stale open-file responses are ignored. */
@@ -152,14 +152,16 @@ export class Loader {
         const missingOpen = !!this.openFile && !this.model.get(this.openFile);
         if (all && this.connection.list) {
           for (const node of this.model.values()) {
-            if (node.type === "folder" && (node.listing === "listed" || node.listing === "failed")) listed.add(node.path);
+            if (node.type === "folder" && node.listing !== "unlisted") listed.add(node.path);
           }
         } else {
           for (const path of paths) {
-            const parent = parentPath(path);
             if (this.connection.list) {
-              if (["listed", "failed"].includes(this.model.get(parent)?.listing ?? "")) listed.add(parent);
-              if (this.model.get(path)?.type === "folder" && ["listed", "failed"].includes(this.model.get(path)?.listing ?? "")) listed.add(path);
+              let folder = parentPath(path);
+              while (folder && this.model.get(folder)?.type !== "folder") folder = parentPath(folder);
+              const folderNode = this.model.get(folder);
+              if (folderNode?.type === "folder" && ["listing", "listed", "failed"].includes(folderNode.listing)) listed.add(folder);
+              if (this.model.get(path)?.type === "folder" && ["listing", "listed", "failed"].includes(this.model.get(path)?.listing ?? "")) listed.add(path);
             }
             if (path === this.openFile) readOpen = true;
           }
