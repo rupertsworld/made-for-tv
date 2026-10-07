@@ -3,8 +3,8 @@ import type { StorybookConfig } from '@storybook/html-vite';
 const config: StorybookConfig = {
   stories: ['./stories/*.stories.ts'],
   framework: { name: '@storybook/html-vite', options: {} },
-  // allowedHosts accepts requests addressed to this machine by its tailnet name, so Television can show the live server.
-  core: { disableTelemetry: true, allowedHosts: ['rubot'] },
+  // STORYBOOK_ALLOWED_HOSTS optionally lists, comma-separated, other host names the server accepts, such as the network name of the machine.
+  core: { disableTelemetry: true, allowedHosts: process.env.STORYBOOK_ALLOWED_HOSTS?.split(',') },
 };
 
 export default config;

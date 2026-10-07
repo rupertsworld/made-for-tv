@@ -79,7 +79,7 @@ A template composes another by calling its `render` and listing its `style`. Rep
 
 ## Storybook
 
-`npm run storybook` opens Storybook with the configuration in `storybook/`. Stories show specifications, not production code: they import templates, `style.css` files and sample data from `storybook/sample-*.ts`, and nothing from `packages/` or `skills/`.
+`npm run storybook` opens Storybook with the configuration in `storybook/`. The server accepts requests addressed to `localhost` or an IP address. To accept other host names, such as the network name of the machine, set `STORYBOOK_ALLOWED_HOSTS` to a comma-separated list of them. Stories show specifications, not production code: they import templates, `style.css` files and sample data from `storybook/sample-*.ts`, and nothing from `packages/` or `skills/`.
 
 Each story pairs a template with a demo page: an object of the same shape, whose options hold page settings such as scheme, width and overrides, and whose `render(args, element)` wraps the element markup. `story()` in `storybook/helpers.ts` builds controls and defaults from both option lists, adopts both style lists as constructable stylesheets on each render, and renders the element inside the page. The tv-markdown story builds a template-shaped object from `style.css` and sample HTML. A story also renders alone at `iframe.html?id=<story-id>&args=<arguments>`.
 
