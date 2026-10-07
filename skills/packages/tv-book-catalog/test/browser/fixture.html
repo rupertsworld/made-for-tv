@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Book catalog contract fixture</title>
+  <link rel="stylesheet" href="/packages/tv-book-catalog/dist/tv-book-catalog.css">
+  <style>
+    body { margin: 0; padding: 16px; background: light-dark(white, #202020); color: light-dark(#222, #eee); color-scheme: light; }
+    main { max-width: 900px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <button id="outside">Outside control</button>
+  <main>
+    <h1 id="catalog-heading" tabindex="-1">Books</h1>
+    <tv-book-catalog id="catalog"></tv-book-catalog>
+    <tv-book-detail id="detail" tabindex="-1" aria-label="Book details" hidden></tv-book-detail>
+  </main>
+  <script type="module">
+    import '/packages/tv-book-catalog/dist/tv-book-catalog.js';
+    const catalog = document.querySelector('#catalog');
+    const detail = document.querySelector('#detail');
+    const books = [
+      { id: 'a " ] # <id>', title: 'A complete title', authors: ['First Author', 'Second Author'],
+        description: 'A full description.\n<b>Literal markup</b>', publicationDate: '2024-05', pageCount: 0,
+        genre: 'Essays', rating: '4.2 / 5',
+        sourceUrl: './destination.html' },
+      { id: 'unknown', title: 'Unknown authors', authors: [], description: 'A book with unknown authors.' },
+      { id: 'long', title: 'VeryLongTitle'.repeat(30), authors: ['VeryLongAuthor'.repeat(30)], description: 'VeryLongDescription'.repeat(30) + '\nAnother line.' },
+    ];
+    catalog.books = books;
+    let savedId = null;
+    let catalogScroll = 0;
+    function show() {
+      const id = new URL(location.href).searchParams.get('book');
+      const selected = books.find(book => book.id === id);
+      const isDetail = id !== null;
+      catalog.hidden = isDetail;
+      detail.hidden = !isDetail;
+      if (isDetail) {
+        detail.book = selected ?? null;
+        (detail.querySelector('h2') ?? detail).focus();
+      } else {
+        catalog.books = books;
+        const button = [...catalog.querySelectorAll('button[data-book-id]')]
+          .find(button => button.dataset.bookId === savedId);
+        (button ?? document.querySelector('#catalog-heading')).focus({ preventScroll: true });
+        scrollTo(0, catalogScroll);
+      }
+    }
+    catalog.addEventListener('bookactivate', event => {
+      savedId = event.detail.id;
+      catalogScroll = scrollY;
+      const url = new URL(location.href);
+      url.searchParams.set('book', event.detail.id);
+      history.pushState(null, '', url);
+      show();
+    });
+    addEventListener('popstate', show);
+    show();
+    window.fixture = { catalog, detail, books };
+  </script>
+</body>
+</html>

@@ -1,0 +1,374 @@
+/** Browser contract tests load the same built JavaScript and CSS that an artifact copies. */
+import { readFileSync } from 'node:fs';
+import { expect, test, type Page } from '@playwright/test';
+
+async function ready(page: Page): Promise<void> {
+  await page.goto('/packages/tv-markdown/test/browser/fixture.html');
+  await page.evaluate(() => customElements.whenDefined('tv-markdown'));
+}
+
+async function setMarkdown(page: Page, markdown: string): Promise<void> {
+  await page.evaluate(source => {
+    const element = document.createElement('tv-markdown') as HTMLElement & { markdown: string };
+    document.querySelector('#host')!.replaceChildren(element);
+    element.markdown = source;
+  }, markdown);
+}
+
+test('ships notices for every bundled third-party package', () => {
+  const notices = readFileSync('packages/tv-markdown/dist/THIRD-PARTY-NOTICES.txt', 'utf8');
+  for (const packageName of ['dompurify', 'marked', 'yaml']) {
+    expect(notices).toMatch(new RegExp(`^${packageName.replace('/', '\\/')}@`, 'm'));
+  }
+});
+
+test('the markdown property renders immediately, reads back, and clears on empty or nullish values', async ({ page }) => {
+  await ready(page);
+  const result = await page.evaluate(() => {
+    const element = document.createElement('tv-markdown') as HTMLElement & { markdown: string | null | undefined };
+    document.querySelector('#host')!.append(element);
+    element.markdown = '# First\n\n**Bold**';
+    const first = { source: element.markdown, heading: element.querySelector('h1')?.textContent,
+      bold: element.querySelector('strong')?.textContent };
+    element.markdown = '';
+    const empty = { source: element.markdown, children: element.children.length };
+    element.markdown = '# Second';
+    element.markdown = null;
+    const nullish = { source: element.markdown, children: element.children.length };
+    element.markdown = '# Third';
+    element.markdown = undefined;
+    return { first, empty, nullish, undefinedChildren: element.children.length };
+  });
+  expect(result).toEqual({
+    first: { source: '# First\n\n**Bold**', heading: 'First', bold: 'Bold' },
+    empty: { source: '', children: 0 },
+    nullish: { source: '', children: 0 },
+    undefinedChildren: 0,
+  });
+});
+
+test('inline script is dedented, rendered, and replaced with output', async ({ page }) => {
+  await ready(page);
+  const result = await page.evaluate(() => {
+    const element = document.createElement('tv-markdown') as HTMLElement & { markdown: string };
+    element.innerHTML = '<script type="text/markdown">\n\n    # In the page\n\n    A 1 < 2 & 3.\n\n</script>';
+    document.querySelector('#host')!.append(element);
+    return { heading: element.querySelector('h1')?.textContent,
+      paragraph: element.querySelector('p')?.textContent,
+      source: element.markdown, scriptGone: element.querySelector('script') === null };
+  });
+  expect(result).toEqual({ heading: 'In the page', paragraph: 'A 1 < 2 & 3.',
+    source: '# In the page\n\nA 1 < 2 & 3.', scriptGone: true });
+});
+
+test('an existing show-frontmatter attribute preserves an inline script during upgrade', async ({ page }) => {
+  await page.goto('/packages/tv-markdown/test/browser/late-upgrade.html');
+  await expect(page.locator('tv-markdown dl[data-frontmatter] dt')).toHaveText('title');
+  await expect(page.locator('tv-markdown dl[data-frontmatter] dd')).toHaveText('Inline document');
+  await expect(page.locator('tv-markdown h1')).toHaveText('Content');
+  await expect(page.locator('tv-markdown script[type="text/markdown"]')).toHaveCount(0);
+});
+
+test('inline script works when the element connects before its child is parsed', async ({ page }) => {
+  await ready(page);
+  const connectedBeforeChild = await page.evaluate(() => {
+    document.open();
+    document.write('<!doctype html><html><body><tv-markdown id="early">');
+    const element = document.querySelector('#early');
+    const connectedWithoutChildren = Boolean(element?.isConnected && element.children.length === 0);
+    document.write('<script type="text/markdown">\n  ## Late child\n</script></tv-markdown></body></html>');
+    document.close();
+    return connectedWithoutChildren;
+  });
+  expect(connectedBeforeChild).toBe(true);
+  await expect(page.locator('#early h2')).toHaveText('Late child');
+  await expect(page.locator('#early script')).toHaveCount(0);
+});
+
+test('property set during parsing renders once when no later inline child arrives', async ({ page }) => {
+  await ready(page);
+  const firstCount = await page.evaluate(() => {
+    document.open();
+    document.write('<!doctype html><html><body><tv-markdown id="early">');
+    const element = document.querySelector('#early') as HTMLElement & { markdown: string };
+    element.dataset.renderCount = '0';
+    element.addEventListener('render', () => {
+      element.dataset.renderCount = String(Number(element.dataset.renderCount) + 1);
+    });
+    element.markdown = '# Property';
+    const count = element.dataset.renderCount;
+    document.write('</tv-markdown></body></html>');
+    document.close();
+    return count;
+  });
+  expect(firstCount).toBe('1');
+  await expect(page.locator('#early h1')).toHaveText('Property');
+  await page.evaluate(() => new Promise<void>(resolve => {
+    if (document.readyState !== 'loading') resolve();
+    else document.addEventListener('DOMContentLoaded', () => resolve(), { once: true });
+  }));
+  await expect(page.locator('#early')).toHaveAttribute('data-render-count', '1');
+});
+
+test('property set during parsing replaces a later inline script', async ({ page }) => {
+  await ready(page);
+  await page.evaluate(() => {
+    document.open();
+    document.write('<!doctype html><html><body><tv-markdown id="early">');
+    const element = document.querySelector('#early') as HTMLElement & { markdown: string };
+    element.markdown = '# Property';
+    document.write('<script type="text/markdown"># Late inline</script></tv-markdown></body></html>');
+    document.close();
+  });
+  await expect(page.locator('#early h1')).toHaveText('Property');
+  await expect(page.locator('#early script')).toHaveCount(0);
+  const source = await page.locator('#early').evaluate(element =>
+    (element as HTMLElement & { markdown: string }).markdown);
+  expect(source).toBe('# Property');
+});
+
+test('setting the property replaces inline content, and later inline content cannot supersede it', async ({ page }) => {
+  await ready(page);
+  const result = await page.evaluate(() => {
+    const element = document.createElement('tv-markdown') as HTMLElement & { markdown: string };
+    element.innerHTML = '<script type="text/markdown"># Inline</script>';
+    element.markdown = '# Property';
+    document.querySelector('#host')!.append(element);
+    return { source: element.markdown, heading: element.querySelector('h1')?.textContent,
+      scriptGone: element.querySelector('script') === null };
+  });
+  expect(result).toEqual({ source: '# Property', heading: 'Property', scriptGone: true });
+});
+
+test('render fires after each render including clear, and does not bubble', async ({ page }) => {
+  await ready(page);
+  const result = await page.evaluate(() => {
+    const parent = document.querySelector('#host')!;
+    const element = document.createElement('tv-markdown') as HTMLElement & { markdown: string | null };
+    parent.append(element);
+    const snapshots: Array<{ text: string; bubbles: boolean; type: string }> = [];
+    let parentEvents = 0;
+    parent.addEventListener('render', () => parentEvents++);
+    element.addEventListener('render', event => snapshots.push({
+      text: element.textContent?.trim() ?? '', bubbles: event.bubbles, type: event.constructor.name,
+    }));
+    element.markdown = 'First';
+    element.markdown = 'Second';
+    element.markdown = null;
+    return { snapshots, parentEvents };
+  });
+  expect(result).toEqual({ snapshots: [
+    { text: 'First', bubbles: false, type: 'Event' },
+    { text: 'Second', bubbles: false, type: 'Event' },
+    { text: '', bubbles: false, type: 'Event' },
+  ], parentEvents: 0 });
+});
+
+test('an uncancelled ordinary link reports linkclick before the browser follows it', async ({ page }) => {
+  await ready(page);
+  await setMarkdown(page, '[Next](/packages/tv-markdown/test/browser/destination.html)');
+  await page.evaluate(() => {
+    document.querySelector('tv-markdown')!.addEventListener('linkclick', event => {
+      const linkEvent = event as MouseEvent & { href: string | null; wikilink: string | null; anchor: HTMLAnchorElement };
+      sessionStorage.setItem('linkclick', JSON.stringify({ href: linkEvent.href,
+        wikilink: linkEvent.wikilink, anchorText: linkEvent.anchor.textContent,
+        bubbles: linkEvent.bubbles, cancelable: linkEvent.cancelable,
+        isMouseEvent: linkEvent instanceof MouseEvent }));
+    });
+  });
+  await page.getByRole('link', { name: 'Next' }).click();
+  await expect(page).toHaveURL(/\/packages\/tv-markdown\/test\/browser\/destination\.html$/);
+  const event = await page.evaluate(() => JSON.parse(sessionStorage.getItem('linkclick') ?? 'null'));
+  expect(event).toEqual({ href: '/packages/tv-markdown/test/browser/destination.html',
+    wikilink: null, anchorText: 'Next', bubbles: true, cancelable: true, isMouseEvent: true });
+});
+
+test('preventDefault on linkclick stops ordinary link navigation', async ({ page }) => {
+  await ready(page);
+  await setMarkdown(page, '[Next](/packages/tv-markdown/test/browser/destination.html)');
+  await page.evaluate(() => {
+    document.querySelector('tv-markdown')!.addEventListener('linkclick', event => {
+      event.preventDefault();
+      document.body.dataset.cancelled = String(event.defaultPrevented);
+    });
+  });
+  const originalUrl = page.url();
+  await page.getByRole('link', { name: 'Next' }).click();
+  await expect(page).toHaveURL(originalUrl);
+  await expect(page.locator('body')).toHaveAttribute('data-cancelled', 'true');
+});
+
+test('wikilinks activate by primary click and Enter with target, anchor, and no href', async ({ page }) => {
+  await ready(page);
+  await setMarkdown(page, '[[notes/topic#part|Topic]]');
+  await page.evaluate(() => {
+    const events: object[] = [];
+    document.querySelector('tv-markdown')!.addEventListener('linkclick', event => {
+      const linkEvent = event as MouseEvent & { href: string | null; wikilink: string | null; anchor: HTMLAnchorElement };
+      events.push({ href: linkEvent.href, wikilink: linkEvent.wikilink,
+        anchorText: linkEvent.anchor.textContent, mouseEvent: linkEvent instanceof MouseEvent });
+    });
+    (window as Window & { capturedLinkEvents?: object[] }).capturedLinkEvents = events;
+  });
+  const link = page.locator('a[data-wikilink]');
+  await expect(link).toHaveAttribute('tabindex', '0');
+  await expect(link).toHaveAttribute('role', 'link');
+  await expect(link).not.toHaveAttribute('href', /./);
+  await link.click();
+  await link.focus();
+  await link.press('Enter');
+  const events = await page.evaluate(() => (window as Window & { capturedLinkEvents?: object[] }).capturedLinkEvents);
+  expect(events).toEqual([
+    { href: null, wikilink: 'notes/topic#part', anchorText: 'Topic', mouseEvent: true },
+    { href: null, wikilink: 'notes/topic#part', anchorText: 'Topic', mouseEvent: true },
+  ]);
+});
+
+test('a page-added wikilink href appears alongside its target in linkclick', async ({ page }) => {
+  await ready(page);
+  await page.evaluate(() => {
+    const element = document.createElement('tv-markdown') as HTMLElement & { markdown: string };
+    document.querySelector('#host')!.append(element);
+    element.addEventListener('render', () => element.querySelector('a[data-wikilink]')?.setAttribute('href', '/note/jane'));
+    element.addEventListener('linkclick', event => {
+      const linkEvent = event as MouseEvent & { href: string | null; wikilink: string | null };
+      event.preventDefault();
+      document.body.dataset.link = JSON.stringify([linkEvent.href, linkEvent.wikilink]);
+    });
+    element.markdown = '[[jane|Jane]]';
+  });
+  await page.getByRole('link', { name: 'Jane' }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-link', '["/note/jane","jane"]');
+});
+
+test('a wikilink given a fragment href follows it without linkclick', async ({ page }) => {
+  await ready(page);
+  await setMarkdown(page, '[[section|Jump]]\n\n## Section');
+  await page.evaluate(() => {
+    document.querySelector('a[data-wikilink]')!.setAttribute('href', '#section');
+    document.querySelector('tv-markdown')!.addEventListener('linkclick', () => {
+      document.body.dataset.linkEvents = '1';
+    });
+  });
+  await page.getByRole('link', { name: 'Jump' }).click();
+  await expect(page).toHaveURL(/#section$/);
+  await expect(page.locator('body')).not.toHaveAttribute('data-link-events', /./);
+});
+
+test('linkclick retains pointer data and each modifier key', async ({ page }) => {
+  await ready(page);
+  await setMarkdown(page, '[Next](/next)');
+  await page.evaluate(() => {
+    const events: object[] = [];
+    document.querySelector('tv-markdown')!.addEventListener('linkclick', event => {
+      event.preventDefault();
+      const mouse = event as MouseEvent;
+      events.push({ button: mouse.button, metaKey: mouse.metaKey, ctrlKey: mouse.ctrlKey,
+        shiftKey: mouse.shiftKey, altKey: mouse.altKey,
+        clientX: mouse.clientX, clientY: mouse.clientY });
+    });
+    (window as Window & { capturedLinkEvents?: object[] }).capturedLinkEvents = events;
+  });
+  const link = page.getByRole('link', { name: 'Next' });
+  for (const modifier of ['Meta', 'Control', 'Shift', 'Alt'] as const) {
+    await link.click({ modifiers: [modifier], position: { x: 2, y: 2 } });
+  }
+  const events = await page.evaluate(() => (window as Window & { capturedLinkEvents?: Array<Record<string, number | boolean>> }).capturedLinkEvents);
+  expect(events).toHaveLength(4);
+  for (const [index, key] of ['metaKey', 'ctrlKey', 'shiftKey', 'altKey'].entries()) {
+    expect(events?.[index]?.[key]).toBe(true);
+    expect(events?.[index]?.button).toBe(0);
+    expect(events?.[index]?.clientX).toBeGreaterThan(0);
+    expect(events?.[index]?.clientY).toBeGreaterThan(0);
+  }
+});
+
+test('heading fragments and middle clicks do not dispatch linkclick', async ({ page }) => {
+  await ready(page);
+  await setMarkdown(page, '[Jump](#section)\n\n## Section\n\n[Next](/next)');
+  await page.evaluate(() => {
+    document.querySelector('tv-markdown')!.addEventListener('linkclick', () => {
+      document.body.dataset.linkEvents = String(Number(document.body.dataset.linkEvents ?? 0) + 1);
+    });
+  });
+  await page.getByRole('link', { name: 'Jump' }).click();
+  await expect(page).toHaveURL(/#section$/);
+  await page.getByRole('link', { name: 'Next' }).click({ button: 'middle' });
+  await expect(page.locator('body')).not.toHaveAttribute('data-link-events', /./);
+});
+
+test('show-frontmatter changes rerender the current document and expose current parsed data', async ({ page }) => {
+  await ready(page);
+  const result = await page.evaluate(() => {
+    const element = document.createElement('tv-markdown') as HTMLElement & {
+      markdown: string;
+      readonly frontmatter: Record<string, unknown> | null;
+    };
+    document.querySelector('#host')!.append(element);
+    const snapshots: Array<{ panel: boolean; title: unknown; heading: string | undefined }> = [];
+    element.addEventListener('render', () => snapshots.push({
+      panel: element.querySelector('dl[data-frontmatter]') !== null,
+      title: element.frontmatter?.title,
+      heading: element.querySelector('h1')?.textContent ?? undefined,
+    }));
+    element.markdown = '---\ntitle: First\n---\n# Body';
+    element.setAttribute('show-frontmatter', '');
+    element.removeAttribute('show-frontmatter');
+    element.markdown = '---\ntitle: Second\n---\n# New body';
+    element.markdown = '# Plain';
+    element.markdown = '';
+    return { snapshots, current: element.frontmatter, source: element.markdown };
+  });
+  expect(result).toEqual({
+    snapshots: [
+      { panel: false, title: 'First', heading: 'Body' },
+      { panel: true, title: 'First', heading: 'Body' },
+      { panel: false, title: 'First', heading: 'Body' },
+      { panel: false, title: 'Second', heading: 'New body' },
+      { panel: false, title: undefined, heading: 'Plain' },
+      { panel: false, title: undefined, heading: undefined },
+    ], current: null, source: '',
+  });
+});
+
+test('frontmatter links dispatch the same linkclick events as content links', async ({ page }) => {
+  await ready(page);
+  await setMarkdown(page, '---\nrelated: "[[notes/topic#part|Topic]]"\nsource: https://example.org/article\n---\n# Content');
+  await page.locator('tv-markdown').evaluate(element => element.setAttribute('show-frontmatter', ''));
+  await page.evaluate(() => {
+    const events: Array<[string | null, string | null]> = [];
+    document.querySelector('tv-markdown')!.addEventListener('linkclick', event => {
+      event.preventDefault();
+      const link = event as MouseEvent & { href: string | null; wikilink: string | null };
+      events.push([link.href, link.wikilink]);
+    });
+    (window as Window & { frontmatterLinks?: typeof events }).frontmatterLinks = events;
+  });
+  const wikilink = page.locator('dl[data-frontmatter] a[data-wikilink]');
+  await wikilink.click();
+  await wikilink.focus();
+  await wikilink.press('Enter');
+  await page.locator('dl[data-frontmatter] a[href]').click();
+  expect(await page.evaluate(() => (window as Window & {
+    frontmatterLinks?: Array<[string | null, string | null]>;
+  }).frontmatterLinks)).toEqual([
+    [null, 'notes/topic#part'], [null, 'notes/topic#part'],
+    ['https://example.org/article', null],
+  ]);
+});
+
+test('a second copy of the module loads without error and leaves the first definition in place', async ({ page }) => {
+  await ready(page);
+  const error = await page.evaluate(async url => {
+    try {
+      await import(url);
+      return null;
+    } catch (caught) {
+      return String(caught);
+    }
+  }, '/packages/tv-markdown/dist/tv-markdown.js?copy=2');
+  expect(error).toBeNull();
+  expect(await page.evaluate(() => customElements.get('tv-markdown') !== undefined)).toBe(true);
+  await setMarkdown(page, '# Still works');
+  await expect(page.locator('#host tv-markdown h1')).toHaveText('Still works');
+});

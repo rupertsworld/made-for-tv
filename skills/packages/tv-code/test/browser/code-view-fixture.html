@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CodeView browser tests</title>
+  <link rel="stylesheet" href="/packages/tv-code/dist/tv-code.css">
+  <style>html { color-scheme: light dark; } body { margin: 0; } tv-code { display: block; width: 500px; height: 300px; }</style>
+  <script type="module">
+    import { CodeView } from "/packages/tv-code/src/code-view.ts";
+    const view = new CodeView({ onLinesChange(lines) { window.changes.push(lines); } });
+    window.view = view;
+    window.changes = [];
+    document.querySelector("tv-code").append(view.element);
+    document.body.dataset.ready = "true";
+  </script>
+</head>
+<body><tv-code></tv-code></body>
+</html>

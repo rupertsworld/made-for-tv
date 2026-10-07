@@ -1,0 +1,34 @@
+{
+  "name": "made-for-tv-skills",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x",
+    "npm": ">=11 <12"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.spec.json --noEmit",
+    "test:unit": "vitest run",
+    "test:e2e": "node scripts/run-e2e.mjs",
+    "test": "node scripts/test.mjs",
+    "storybook": "storybook dev -c storybook -p 6006 --no-open --host 127.0.0.1",
+    "screenshots": "node scripts/screenshots.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "@storybook/html-vite": "10.6.0",
+    "@telepath-computer/television": "1.4.23",
+    "@types/node": "24.9.1",
+    "jsdom": "^27.0.0",
+    "storybook": "10.6.0",
+    "tm-grammars": "1.32.22",
+    "typescript": "5.9.3",
+    "vite": "6.4.3",
+    "vitest": "4.1.11"
+  }
+}

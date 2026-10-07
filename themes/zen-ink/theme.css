@@ -1,0 +1,101 @@
+/* Zen Ink: washi paper, sumi ink and one vermilion seal colour, over a
+   dusk gradient. Light is ink on paper; dark reverses them. See README.md. */
+
+:root {
+  /* In light, greys carry a faint violet undertone taken from the top of the wallpaper. */
+  --neutral: oklch(0.556 0.012 290);
+
+  --color-border: oklch(from var(--color-text) l c h / 14%);
+
+  /* Checked tasks are marked in ink rather than the accent. */
+  --checkbox-color: var(--color-text);
+}
+
+/* Light: sumi ink on washi paper. */
+[data-theme="light"] {
+  /* Vermilion, the colour of a hanko seal: the single accent. */
+  --accent: oklch(0.56 0.16 33);
+
+  --color-surface: oklch(0.982 0.006 90);
+  --color-surface-muted: oklch(0.956 0.009 88);
+  --color-text: oklch(0.24 0.012 285);
+  --color-text-muted: oklch(0.52 0.012 285);
+
+  /* Soft, ink-tinted shadows, like paper lifted off a table. */
+  --shadow-sm: 0 1px 3px oklch(0.24 0.012 285 / 10%);
+  --shadow-md: 0 4px 14px oklch(0.24 0.012 285 / 12%);
+  --shadow-lg:
+    0 10px 28px oklch(0.24 0.012 285 / 12%),
+    0 2px 6px oklch(0.24 0.012 285 / 6%);
+}
+
+/* Dark: the same pair reversed, paper-white text on an ink-black sheet. The
+   ink and greys take the olive undertone of the dark wallpaper's upper band,
+   and the seal is a step lighter so it holds against the ink. */
+[data-theme="dark"] {
+  --neutral: oklch(0.556 0.01 105);
+  --accent: oklch(0.64 0.16 33);
+
+  --color-surface: oklch(0.225 0.008 105);
+  --color-surface-muted: oklch(0.26 0.008 105);
+  --color-text: oklch(0.92 0.008 90);
+  --color-text-muted: oklch(0.68 0.008 95);
+
+  /* Shadows on a dark ground need more weight to show. */
+  --shadow-sm: 0 1px 3px oklch(0 0 0 / 30%);
+  --shadow-md: 0 4px 14px oklch(0 0 0 / 35%);
+  --shadow-lg:
+    0 10px 28px oklch(0 0 0 / 40%),
+    0 2px 6px oklch(0 0 0 / 25%);
+}
+
+:root[data-television-document="app"] {
+  /* Dusk: mauve-grey at the top easing into sage-grey by 60% of the height,
+     under a tiled grain texture (see make-grain.py). The texture goes through
+     the image token because only that token resolves a relative URL against
+     this stylesheet. */
+  --app-wallpaper-image: url(assets/grain-light.png);
+  --app-wallpaper:
+    var(--app-wallpaper-image) 0 0 / 128px 128px repeat,
+    linear-gradient(in oklab to bottom, oklch(0.69 0.031 306) 0%, oklch(0.89 0.008 170) 60%);
+
+  /* The selected channel is a pill in the text colour with surface-coloured
+     text: ink on paper in light, paper on ink in dark. The accent stays rare. */
+  --channel-background-selected: var(--color-text);
+  --channel-text-color-selected: var(--color-surface);
+
+  /* Artifact frames read as single sheets: one paper colour, a hairline divider. */
+  --frame-titlebar-background: var(--color-surface);
+  --artifact-frame-shadow:
+    0 1px 2px oklch(0.24 0.012 285 / 8%),
+    0 22px 44px -14px oklch(0.3 0.02 295 / 24%);
+
+  /* Tabs and navbar controls sit on the gradient in the text colour, over a
+     wash so they read as controls rather than loose text. */
+  --wallpaper-overlay-text-color: var(--color-text);
+  --wallpaper-overlay-background: oklch(1 0 0 / 40%);
+  --tab-text-color: oklch(from var(--color-text) l c h / 70%);
+  --tab-background-selected: var(--color-surface);
+}
+
+:root[data-television-document="app"][data-theme="dark"] {
+  /* Night: olive ink-black across the top third, opening into slate blue-grey,
+     under its own grain texture. */
+  --app-wallpaper-image: url(assets/grain-dark.png);
+  --app-wallpaper:
+    var(--app-wallpaper-image) 0 0 / 128px 128px repeat,
+    linear-gradient(in oklab to bottom, oklch(0.21 0.014 104) 30%, oklch(0.6 0.034 232) 100%);
+
+  --wallpaper-overlay-background: oklch(1 0 0 / 9%);
+  --artifact-frame-shadow:
+    0 1px 2px oklch(0 0 0 / 30%),
+    0 22px 44px -14px oklch(0 0 0 / 55%);
+}
+
+/* The channel switcher in the top bar declares its own selected-channel
+   colours, which hide the root values above. Repeat them here so a channel
+   selected in the switcher looks the same as in the sidebar. */
+.channel-switcher-pop {
+  --channel-background-selected: var(--color-text);
+  --channel-text-color-selected: var(--color-surface);
+}
