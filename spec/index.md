@@ -41,7 +41,7 @@ Each skill has one name, used for its specification folder, package folder, pack
 ## Packages
 
 - The root `package.json` declares `packages/*` as npm workspaces and holds the development tools shared by every package: TypeScript, Vite, Vitest, Playwright and Storybook. The repository uses Node 24 and npm 11.
-- Each skill is one private package, named after the skill without a scope. It contains `package.json` with a `build` script, `SKILL.md`, the TypeScript source in `src/`, the tests in `test/`, and its build configuration.
+- Each skill is one private package, named after the skill without a scope. It contains `package.json` with a `build` script, `SKILL.md`, a `README.md` for people, the TypeScript source in `src/`, the tests in `test/`, and its build configuration. The README gives an overview, the screenshot and installation, and is not part of the built skill.
 - Code bundled into a skill, such as a Markdown parser, is a dependency of that package. Tools are development dependencies of the root.
 
 ## Build
@@ -85,7 +85,7 @@ Each story pairs a template with a demo page: an object of the same shape, whose
 
 ## Screenshots
 
-`npm run screenshots` runs `scripts/screenshots.mjs`, which renders each built skill with sample content and saves `docs/screenshots/<skill>-light.png` and `<skill>-dark.png`. The README shows the image that matches the colour scheme of the reader. After a change to how a skill looks, run the script and commit the new images with the change.
+`npm run screenshots` runs `scripts/screenshots.mjs`, which renders each built skill with sample content and saves `docs/screenshots/<skill>-light.png` and `<skill>-dark.png`. The repository README and each package README show the image that matches the colour scheme of the reader. After a change to how a skill looks, run the script and commit the new images with the change.
 
 - The pages load the Television canonical stylesheet from the `@telepath-computer/television` development dependency, so the images show the skills as they look in Television.
 - Each image is the same square with a rounded border and transparent corners. The border is drawn into the image because GitHub removes styles from README markup.
