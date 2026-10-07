@@ -1,0 +1,44 @@
+{
+  "name": "vault-server",
+  "private": true,
+  "version": "0.5.0",
+  "description": "Local HTTP and WebSocket sidecar for an Obsidian vault.",
+  "type": "module",
+  "bin": {
+    "vault-server": "dist/src/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/server.d.ts",
+      "default": "./dist/src/server.js"
+    }
+  },
+  "types": "dist/src/server.d.ts",
+  "scripts": {
+    "prebuild": "npm --workspaces=false --prefix ../file-server run build && if [ -d dist ]; then mv dist \"$(mktemp -d)/dist\"; fi",
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/src/cli.js",
+    "pretest": "npm run build && npm run lint",
+    "test": "node --test test/*.test.ts",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "files": [
+    "dist/src",
+    "skill"
+  ],
+  "dependencies": {
+    "file-server": "^0.2.0",
+    "express": "^5.1.0",
+    "gray-matter": "^4.0.3",
+    "js-yaml": "^4.3.1",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.1.0",
+    "typescript": "^5.9.2"
+  }
+}

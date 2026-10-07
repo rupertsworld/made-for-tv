@@ -1,10 +1,12 @@
 # made-for-tv
 
-Skills and themes made for [Television](https://github.com/telepath-computer/television).
+Skills, themes and servers made for [Television](https://github.com/telepath-computer/television).
 
 The skills help an agent build beautiful artifacts: the HTML pages an agent makes to show you something. Each skill provides custom HTML elements, such as a Markdown document view or a code viewer, and a `SKILL.md` that tells the agent how to use them. The agent copies the JavaScript and CSS files of the skill next to the `index.html` of the artifact. The elements work in any web page, and inside Television they take on its styles and the active theme.
 
 The themes change how Television itself looks.
+
+The servers give artifacts live access to the files and notes on your machine.
 
 ## Install the skills
 
@@ -55,12 +57,38 @@ Washi-paper surfaces, sumi-ink text and a single vermilion accent over a soft du
 
 To install a theme, copy its folder from [`themes/`](themes/) into the themes folder of Television, which `tv themes-path` prints, then select it with `tv set-theme`, such as `tv set-theme zen-ink`. [`themes/README.md`](themes/README.md) describes what a theme folder holds.
 
+## Servers
+
+[`servers/`](servers/) gives Television artifacts live files and notes. Bellhop brings the services together under one address.
+
+- [file-server](servers/file-server/README.md) serves a directory as files and change events.
+- [vault-server](servers/vault-server/README.md) adds structured Markdown records to the file service.
+- [Bellhop](servers/bellhop/README.md) starts and mounts local services.
+
+The binaries are built from a clone; they are not published to npm. Run these commands to install dependencies, build all three, and link their commands into `~/.local/bin`:
+
+```sh
+git clone https://github.com/rupertsworld/made-for-tv
+cd made-for-tv/servers
+./setup.sh
+```
+
+Pass another bin directory to `setup.sh` if needed. The [server setup guide](servers/README.md) has details.
+
+The skills CLI finds the three artifact skills with `npx skills add rupertsworld/made-for-tv`. Install either server skill by its folder URL:
+
+```sh
+npx skills add https://github.com/rupertsworld/made-for-tv/tree/main/servers/file-server/skill
+npx skills add https://github.com/rupertsworld/made-for-tv/tree/main/servers/vault-server/skill
+```
+
 ## Layout
 
 The repository has one folder for each kind of thing it holds:
 
 - [`skills/`](skills/) is an npm project with the skills and the tools that build and test them: a package for each skill in `packages/`, and the specifications, Storybook, tests and scripts beside them. Each skill has its built files in `skills/packages/<skill>/dist/`, committed so the skills install straight from the repository. [`skills/spec/index.md`](skills/spec/index.md) specifies the layout, build, tests and screenshots.
 - [`themes/`](themes/) has one folder per Television theme, ready to install. Themes have no build step.
+- [`servers/`](servers/) contains the file server, vault server, Bellhop, and their specifications.
 
 ## Develop the skills
 
@@ -76,4 +104,4 @@ npm run screenshots  # capture the images in docs/screenshots/
 
 ## Licence
 
-MIT; see [`LICENSE`](LICENSE). A skill that bundles third-party code, such as a Markdown parser, carries the licences of that code in `THIRD-PARTY-NOTICES.txt` in its `dist/` folder.
+The whole repository, including `servers/`, is MIT; see [`LICENSE`](LICENSE). A skill that bundles third-party code, such as a Markdown parser, carries the licences of that code in `THIRD-PARTY-NOTICES.txt` in its `dist/` folder.

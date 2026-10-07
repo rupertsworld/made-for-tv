@@ -1,0 +1,48 @@
+{
+  "name": "file-server",
+  "private": true,
+  "version": "0.2.0",
+  "description": "Serve a live directory over HTTP and WebSocket.",
+  "type": "module",
+  "bin": {
+    "file-server": "dist/src/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/server.d.ts",
+      "default": "./dist/src/server.js"
+    },
+    "./conformance": {
+      "types": "./dist/src/conformance/index.d.ts",
+      "default": "./dist/src/conformance/index.js"
+    }
+  },
+  "types": "dist/src/server.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/src/cli.js",
+    "pretest": "npm run lint && npm run build",
+    "test": "node --test test/*.test.ts",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "files": [
+    "dist/src",
+    "skill"
+  ],
+  "dependencies": {
+    "@types/express": "^5.0.3",
+    "chokidar": "^4.0.3",
+    "express": "^5.1.0",
+    "ignore": "^7.0.10",
+    "mime-types": "^3.0.2",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/mime-types": "^3.0.1",
+    "@types/node": "^24.1.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.2"
+  }
+}
