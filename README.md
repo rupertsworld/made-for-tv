@@ -14,7 +14,7 @@ The servers give artifacts live access to the files and notes on your machine.
 npx skills add rupertsworld/made-for-tv
 ```
 
-The [skills CLI](https://github.com/vercel-labs/skills) lists the skills in this repository and asks which ones to install and for which agents. Add `--skill tv-code` to install one skill, or `-g` to install for every project instead of the current one.
+The [skills CLI](https://github.com/vercel-labs/skills) lists the skills in this repository, the artifact skills and the skills for the [servers](#servers), and asks which ones to install and for which agents. Add `--skill tv-code` to install one skill, or `-g` to install for every project instead of the current one.
 
 To install without the CLI, copy the built files of a skill, such as [`skills/packages/tv-code/dist/`](skills/packages/tv-code/dist/), into a folder named after the skill in the skills folder of your agent, such as `~/.claude/skills/tv-code/` for Claude Code.
 
@@ -75,12 +75,7 @@ cd made-for-tv/servers
 
 Pass another bin directory to `setup.sh` if needed. The [server setup guide](servers/README.md) has details.
 
-The skills CLI finds the three artifact skills with `npx skills add rupertsworld/made-for-tv`. Install either server skill by its folder URL:
-
-```sh
-npx skills add https://github.com/rupertsworld/made-for-tv/tree/main/servers/file-server/skill
-npx skills add https://github.com/rupertsworld/made-for-tv/tree/main/servers/vault-server/skill
-```
+Each server has a skill that teaches an agent its HTTP contract. `npx skills add rupertsworld/made-for-tv` offers them under Server Skills, beside the artifact skills.
 
 ## Layout
 
@@ -89,6 +84,7 @@ The repository has one folder for each kind of thing it holds:
 - [`skills/`](skills/) is an npm project with the skills and the tools that build and test them: a package for each skill in `packages/`, and the specifications, Storybook, tests and scripts beside them. Each skill has its built files in `skills/packages/<skill>/dist/`, committed so the skills install straight from the repository. [`skills/spec/index.md`](skills/spec/index.md) specifies the layout, build, tests and screenshots.
 - [`themes/`](themes/) has one folder per Television theme, ready to install. Themes have no build step.
 - [`servers/`](servers/) contains the file server, vault server, Bellhop, and their specifications.
+- [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) lists every skill folder, grouped into artifact skills and server skills, so the skills CLI finds the server skills outside `skills/`. A new skill is added to it.
 
 ## Develop the skills
 

@@ -33,11 +33,10 @@ go test ./...
 
 ## Install the server skills
 
-The skills CLI searches `skills/` when given the repository root. Point it at each server skill folder:
+Each server's skill is in its `skill/` folder. Install them with the other made-for-tv skills; they appear under Server Skills:
 
 ```sh
-npx skills add https://github.com/rupertsworld/made-for-tv/tree/main/servers/file-server/skill
-npx skills add https://github.com/rupertsworld/made-for-tv/tree/main/servers/vault-server/skill
+npx skills add rupertsworld/made-for-tv
 ```
 
 The [repository MIT licence](../LICENSE) covers these servers.

@@ -1,0 +1,18 @@
+{
+  "name": "made-for-tv",
+  "owner": { "name": "Rupert Manfredi" },
+  "plugins": [
+    {
+      "name": "artifact-skills",
+      "source": "./",
+      "description": "Skills for building Television artifacts.",
+      "skills": ["./skills/packages/tv-markdown/dist", "./skills/packages/tv-code/dist", "./skills/packages/tv-book-catalog/dist"]
+    },
+    {
+      "name": "server-skills",
+      "source": "./",
+      "description": "Skills for using the file and vault servers.",
+      "skills": ["./servers/file-server/skill", "./servers/vault-server/skill"]
+    }
+  ]
+}
