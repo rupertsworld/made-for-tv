@@ -107,7 +107,8 @@ const shots = [
   },
 ];
 
-const browser = await chromium.launch();
+// Without hinting, glyphs keep their designed positions instead of snapping to pixels, as on macOS.
+const browser = await chromium.launch({ args: ["--font-render-hinting=none"] });
 mkdirSync(outputDirectory, { recursive: true });
 try {
   for (const shot of shots) {
