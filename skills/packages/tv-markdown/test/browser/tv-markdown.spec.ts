@@ -198,6 +198,154 @@ test('preventDefault on linkclick stops ordinary link navigation', async ({ page
   await expect(page.locator('body')).toHaveAttribute('data-cancelled', 'true');
 });
 
+test('footnote markers and every repeated back-link scroll through fragment anchors', async ({ page }) => {
+  await ready(page);
+  const filler = Array.from({ length: 80 }, (_, index) => `Paragraph ${index + 1}.`).join('\n\n');
+  await setMarkdown(page, `First claim.[^shared] Repeated claim.[^shared]\n\n${filler}\n\n[^shared]: Shared evidence.`);
+  await page.evaluate(() => {
+    document.querySelector('tv-markdown')!.addEventListener('linkclick', () => {
+      document.body.dataset.linkEvents = String(Number(document.body.dataset.linkEvents ?? 0) + 1);
+    });
+  });
+
+  const markers = page.locator('a[data-footnote-ref]');
+  const backlinks = page.locator('a[data-footnote-backref]');
+  await expect(markers).toHaveCount(2);
+  await expect(markers).toHaveText(['1', '1']);
+  await expect(backlinks).toHaveCount(2);
+  const markerIds = await markers.evaluateAll(nodes => nodes.map(node => node.id));
+  const destination = await markers.first().getAttribute('href');
+  expect(destination).toMatch(/^#.+/);
+  await expect(markers.nth(1)).toHaveAttribute('href', destination!);
+  await expect(backlinks.nth(0)).toHaveAttribute('href', `#${markerIds[0]}`);
+  await expect(backlinks.nth(1)).toHaveAttribute('href', `#${markerIds[1]}`);
+
+  await markers.first().click();
+  await expect(page).toHaveURL(new RegExp(`${destination!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
+  expect(await page.locator(destination!).evaluate(node => {
+    const position = node.getBoundingClientRect();
+    return position.top >= 0 && position.top < innerHeight;
+  })).toBe(true);
+  await backlinks.first().click();
+  await expect(page).toHaveURL(new RegExp(`#${markerIds[0]}$`));
+  expect(await markers.first().evaluate(node => {
+    const position = node.getBoundingClientRect();
+    return position.top >= 0 && position.top < innerHeight;
+  })).toBe(true);
+  await expect(page.locator('body')).not.toHaveAttribute('data-link-events', /./);
+});
+
+test('adjacent footnote markers sit tight, have separate enlarged targets, and navigate independently', async ({ page }) => {
+  await ready(page);
+  const filler = Array.from({ length: 80 }, (_, index) => `Paragraph ${index + 1}.`).join('\n\n');
+  await setMarkdown(page, `Review tasks;[^first][^second] feedback.  \nClaim[^first][^second].\n\n${filler}\n\n` +
+    '[^first]: First note.\n[^second]: Second note.');
+  await page.evaluate(() => {
+    document.querySelector('tv-markdown')!.addEventListener('linkclick', () => {
+      document.body.dataset.linkEvents = 'unexpected';
+    });
+    (document.querySelector('tv-markdown') as HTMLElement).style
+      .setProperty('--tv-markdown-text-size', '12px');
+  });
+
+  const markers = page.locator('a[data-footnote-ref]');
+  await expect(markers).toHaveText(['1', '2', '1', '2']);
+  const layout = await page.locator('tv-markdown > p').first().evaluate(paragraph => {
+    const links = [...paragraph.querySelectorAll<HTMLAnchorElement>('a[data-footnote-ref]')].slice(0, 2);
+    const textRect = (node: Node, start = 0, end?: number) => {
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, end ?? node.textContent!.length);
+      return range.getBoundingClientRect();
+    };
+    const boxes = links.map(link => {
+      const target = link.getBoundingClientRect();
+      const digit = textRect(link.firstChild!);
+      const pseudo = getComputedStyle(link, '::after');
+      const inset = (value: string) => Number.parseFloat(value) || 0;
+      const hit = {
+        left: target.left + inset(pseudo.left),
+        right: target.right - inset(pseudo.right),
+        top: target.top + inset(pseudo.top),
+        bottom: target.bottom - inset(pseudo.bottom),
+      };
+      return { digit: { left: digit.left, right: digit.right, height: digit.height }, hit,
+        decoration: getComputedStyle(link).textDecorationLine,
+        parentText: link.parentElement?.textContent,
+        ownsPointAbove: document.elementFromPoint((target.left + target.right) / 2, target.top - 3) === link };
+    });
+    const before = paragraph.firstChild!;
+    const comma = links[1].parentElement!.firstChild!;
+    const after = links[1].parentElement!.nextSibling!;
+    return { boxes, followingText: after.textContent,
+      precedingTextEnd: textRect(before, before.textContent!.length - 1).right,
+      commaLeft: textRect(comma).left,
+      commaRight: textRect(comma).right,
+      followingTextLeft: textRect(after, 0, 1).left };
+  });
+  expect(layout.boxes.map(box => box.parentText)).toEqual(['1', ',2']);
+  expect(layout.followingText).toMatch(/^ feedback\./);
+  expect(Math.abs(layout.boxes[0].digit.left - layout.precedingTextEnd)).toBeLessThanOrEqual(1);
+  expect(Math.abs(layout.commaLeft - layout.boxes[0].digit.right)).toBeLessThanOrEqual(1);
+  expect(Math.abs(layout.boxes[1].digit.left - layout.commaRight)).toBeLessThanOrEqual(1);
+  expect(Math.abs(layout.followingTextLeft - layout.boxes[1].digit.right)).toBeLessThanOrEqual(1);
+  for (const box of layout.boxes) {
+    expect(box.decoration).toBe('none');
+    expect(box.hit.bottom - box.hit.top).toBeGreaterThan(box.digit.height + 6);
+    expect(box.ownsPointAbove).toBe(true);
+  }
+  expect(layout.boxes[0].hit.right).toBeLessThanOrEqual(layout.boxes[1].hit.left);
+
+  const destinations = await markers.evaluateAll(nodes => nodes.map(node => node.getAttribute('href')));
+  expect(destinations[0]).not.toBe(destinations[1]);
+  await markers.first().click();
+  await expect(page).toHaveURL(new RegExp(`${destinations[0]}$`));
+  await markers.nth(1).click();
+  await expect(page).toHaveURL(new RegExp(`${destinations[1]}$`));
+  await expect(page.locator('body')).not.toHaveAttribute('data-link-events', /./);
+});
+
+test('a link inside a footnote dispatches linkclick', async ({ page }) => {
+  await ready(page);
+  await setMarkdown(page, 'A sourced claim.[^source]\n\n[^source]: [Source record](https://example.org/source).');
+  await page.evaluate(() => {
+    document.querySelector('tv-markdown')!.addEventListener('linkclick', event => {
+      event.preventDefault();
+      const link = event as MouseEvent & { href: string | null; anchor: HTMLAnchorElement };
+      document.body.dataset.footnoteLink = JSON.stringify([link.href, link.anchor.textContent]);
+    });
+  });
+  const source = page.getByRole('link', { name: 'Source record' });
+  await expect(source).toHaveAttribute('href', 'https://example.org/source');
+  await source.click();
+  await expect(page.locator('body')).toHaveAttribute(
+    'data-footnote-link', '["https://example.org/source","Source record"]',
+  );
+});
+
+test('autofile links in prose and footnotes keep their href and dispatch linkclick', async ({ page }) => {
+  await ready(page);
+  await setMarkdown(page, '[Body record](autofile:///reference/body) and a claim.[^source]\n\n' +
+    '[^source]: [Footnote record](autofile:///reference/footnote).');
+  await page.evaluate(() => {
+    const events: string[] = [];
+    document.querySelector('tv-markdown')!.addEventListener('linkclick', event => {
+      event.preventDefault();
+      events.push((event as MouseEvent & { href: string }).href);
+    });
+    (window as Window & { autofileEvents?: string[] }).autofileEvents = events;
+  });
+
+  const body = page.getByRole('link', { name: 'Body record' });
+  const footnote = page.getByRole('link', { name: 'Footnote record' });
+  await expect(body).toHaveAttribute('href', 'autofile:///reference/body');
+  await expect(footnote).toHaveAttribute('href', 'autofile:///reference/footnote');
+  await body.click();
+  await footnote.click();
+  expect(await page.evaluate(() => (window as Window & { autofileEvents?: string[] }).autofileEvents))
+    .toEqual(['autofile:///reference/body', 'autofile:///reference/footnote']);
+});
+
 test('wikilinks activate by primary click and Enter with target, anchor, and no href', async ({ page }) => {
   await ready(page);
   await setMarkdown(page, '[[notes/topic#part|Topic]]');

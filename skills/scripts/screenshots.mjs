@@ -48,12 +48,10 @@ A week for the autumn leaves, staying near [[places/demachiyanagi|Demachiyanagi]
 | Fri | Fushimi Inari at 7 am | Tofuku-ji gardens |
 | Sat | Arashiyama bamboo grove | Okochi Sanso villa |
 
-> Temples with famous leaves fill by nine. Go early.
+> Temples with famous leaves fill by nine. Go early.[^timing][^crowds]
 
-## Packing
-
-- Layers for cold mornings
-- Walking shoes
+[^timing]: [Autumn guide](https://example.org/kyoto). Arrive before nine.
+[^crowds]: Weekends are busiest.
 `;
 
 // First-edition covers from Wikimedia Commons, all public domain, resized for the screenshot.

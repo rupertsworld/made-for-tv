@@ -3171,6 +3171,181 @@ f.walkTokens;
 f.parseInline;
 b.parse;
 x.lex;
+const definitionPattern = /^ {0,3}\[\^([^\s\[\]]+)\]:[ \t]*([^\n]*)(?:\n|$)/;
+const referencePattern = /^\[\^([^\s\[\]]+)\]/;
+const definitionSearchPattern = /(?:^|\n) {0,3}\[\^[^\s\[\]]+\]:/;
+const maximumLabelBytes = 1e3;
+function footnotes(prefix) {
+  const definitions = /* @__PURE__ */ new Map();
+  const cited = [];
+  const collection = {
+    type: "footnotes",
+    raw: "",
+    definitions: cited
+  };
+  let hasCollection = false;
+  return {
+    extensions: [
+      {
+        name: "footnoteDefinition",
+        level: "block",
+        start(source) {
+          const match = definitionSearchPattern.exec(source);
+          if (!match) return void 0;
+          return match.index + (match[0].startsWith("\n") ? 1 : 0);
+        },
+        tokenizer(source) {
+          const match = definitionPattern.exec(source);
+          if (!match || !validLabel(match[1])) return void 0;
+          if (!hasCollection) {
+            this.lexer.tokens.push(collection);
+            hasCollection = true;
+          }
+          const label = match[1];
+          const identifier = normalizeLabel(label);
+          const body = definitionBody(source, match);
+          if (!definitions.has(identifier)) {
+            const definition = { label, tokens: [], references: [] };
+            definitions.set(identifier, definition);
+            definition.tokens = this.lexer.blockTokens(body.source, []);
+          }
+          return { type: "footnoteDefinition", raw: body.raw };
+        },
+        renderer() {
+          return "";
+        }
+      },
+      {
+        name: "footnoteReference",
+        level: "inline",
+        start: (source) => source.indexOf("[^"),
+        tokenizer(source, tokens) {
+          var _a2;
+          const match = referencePattern.exec(source);
+          if (!match || !validLabel(match[1])) return void 0;
+          const definition = definitions.get(normalizeLabel(match[1]));
+          if (!definition) return void 0;
+          if (!definition.references.length) cited.push(definition);
+          const reference = {
+            type: "footnoteReference",
+            raw: match[0],
+            definition,
+            number: cited.indexOf(definition) + 1,
+            occurrence: definition.references.length + 1,
+            adjacent: ((_a2 = tokens.at(-1)) == null ? void 0 : _a2.type) === "footnoteReference"
+          };
+          definition.references.push(reference);
+          return reference;
+        },
+        renderer(token) {
+          const reference = token;
+          const separator = reference.adjacent ? "," : "";
+          return `<sup>${separator}<a id="${referenceId(prefix, reference)}" href="#${definitionId(prefix, reference.definition)}">${reference.number}</a></sup>`;
+        }
+      },
+      {
+        name: "footnotes",
+        renderer(token) {
+          const footnoteToken = token;
+          if (!footnoteToken.definitions.length) return "";
+          const items = footnoteToken.definitions.map((definition) => {
+            const content = this.parser.parse(definition.tokens).trimEnd();
+            const backlinks = definition.references.map((reference, referenceIndex) => {
+              const suffix = referenceIndex === 0 ? "" : `<sup>${referenceIndex + 1}</sup>`;
+              return `<a href="#${referenceId(prefix, reference)}">↩${suffix}</a>`;
+            }).join(" ");
+            const body = content.endsWith("</p>") ? `${content.slice(0, -4)} ${backlinks}</p>` : `${content}
+${backlinks}`;
+            return `<li id="${definitionId(prefix, definition)}">${body}</li>`;
+          }).join("\n");
+          return `<section><h2 id="${prefix}heading">Footnotes</h2><ol>
+${items}
+</ol></section>
+`;
+        }
+      }
+    ],
+    hooks: {
+      processAllTokens(tokens) {
+        const index = tokens.indexOf(collection);
+        if (index >= 0) {
+          tokens.splice(index, 1);
+          tokens.push(collection);
+        }
+        return tokens;
+      }
+    }
+  };
+}
+function definitionBody(source, match) {
+  let raw = match[0];
+  const lines = [match[2]];
+  let remaining = source.slice(raw.length);
+  let blankLines = [];
+  let blankRaw = "";
+  while (remaining) {
+    const next = /^([^\n]*)(?:\n|$)/.exec(remaining);
+    if (!next || !next[0]) break;
+    const [lineWithEnding, line] = next;
+    if (!line.trim()) {
+      blankLines.push("");
+      blankRaw += lineWithEnding;
+      remaining = remaining.slice(lineWithEnding.length);
+      continue;
+    }
+    const indented = stripContainerIndent(line);
+    if (blankLines.length && indented === null) break;
+    if (indented === null && startsOuterBlock(line)) break;
+    lines.push(...blankLines, indented ?? line);
+    blankLines = [];
+    raw += blankRaw + lineWithEnding;
+    blankRaw = "";
+    remaining = remaining.slice(lineWithEnding.length);
+  }
+  return { raw, source: `${lines.join("\n")}
+` };
+}
+function stripContainerIndent(line) {
+  if (line.startsWith("	")) return line.slice(1);
+  return line.startsWith("    ") ? line.slice(4) : null;
+}
+function startsOuterBlock(line) {
+  const definition = definitionPattern.exec(`${line}
+`);
+  if (definition && validLabel(definition[1])) return true;
+  return [
+    /^ {0,3}#{1,6}(?:[ \t]+|$)/,
+    /^ {0,3}(?:`{3,}|~{3,})/,
+    /^ {0,3}>/,
+    /^ {0,3}(?:[*+-]|\d{1,9}[.)])(?:[ \t]+|$)/,
+    /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})$/,
+    /^ {0,3}<(?:!--|\?|!\[CDATA\[|!DOCTYPE\b|\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|pre|script|search|section|style|summary|table|tbody|td|textarea|tfoot|th|thead|title|tr|track|ul)(?:[ \t/>]|$))/i
+  ].some((pattern) => pattern.test(line));
+}
+function validLabel(label) {
+  return isWellFormed(label) && new TextEncoder().encode(label).length <= maximumLabelBytes;
+}
+function isWellFormed(text2) {
+  for (let index = 0; index < text2.length; index++) {
+    const code = text2.charCodeAt(index);
+    if (code >= 55296 && code <= 56319) {
+      const next = text2.charCodeAt(++index);
+      if (!(next >= 56320 && next <= 57343)) return false;
+    } else if (code >= 56320 && code <= 57343) {
+      return false;
+    }
+  }
+  return true;
+}
+function normalizeLabel(label) {
+  return label.toLowerCase();
+}
+function definitionId(prefix, definition) {
+  return `${prefix}note-${encodeURIComponent(definition.label)}`;
+}
+function referenceId(prefix, reference) {
+  return `${prefix}ref-${reference.occurrence}-${encodeURIComponent(reference.definition.label)}`;
+}
 const allowedTags = [
   "p",
   "br",
@@ -3192,6 +3367,8 @@ const allowedTags = [
   "pre",
   "code",
   "a",
+  "sup",
+  "section",
   "img",
   "table",
   "thead",
@@ -3203,6 +3380,9 @@ const allowedTags = [
 ];
 const viewerAttributes = /* @__PURE__ */ new Set(["href", "src", "alt", "title", "start", "colspan", "rowspan"]);
 const checkboxAttributes = /* @__PURE__ */ new Set(["type", "checked", "disabled"]);
+const urlAttributes = /* @__PURE__ */ new Set(["href", "src"]);
+const dangerousSchemes = /* @__PURE__ */ new Set(["javascript", "vbscript", "data"]);
+const footnoteIdTags = /* @__PURE__ */ new Set(["a", "h2", "li"]);
 function normalizeInlineMarkdown(source) {
   var _a2;
   const lines = source.replace(/\r\n?/g, "\n").split("\n");
@@ -3222,7 +3402,8 @@ function normalizeInlineMarkdown(source) {
 function renderMarkdown(source) {
   const wikilinks = [];
   const nonce = [...crypto.getRandomValues(new Uint32Array(4))].map((value) => value.toString(16)).join("-");
-  const prefix = `tv-wikilink-${nonce}-`;
+  const wikilinkPrefix = `tv-wikilink-${nonce}-`;
+  const footnotePrefix = `tv-footnote-${nonce}-`;
   const parser = new Q({
     gfm: true,
     async: false,
@@ -3256,10 +3437,11 @@ function renderMarkdown(source) {
       renderer(token) {
         const wikilink = token;
         const index = wikilinks.push(wikilink.target) - 1;
-        return `<a href="#${prefix}${index}">${escapeHtml(wikilink.label)}</a>`;
+        return `<a href="#${wikilinkPrefix}${index}">${escapeHtml(wikilink.label)}</a>`;
       }
     }]
   });
+  parser.use(footnotes(footnotePrefix));
   const html2 = parser.parse(source);
   const fragment = purify_default.sanitize(html2, {
     RETURN_DOM_FRAGMENT: true,
@@ -3277,6 +3459,10 @@ function renderMarkdown(source) {
       "checked",
       "disabled"
     ],
+    // Apply the exact scheme policy below to every URL attribute that survives
+    // the element's allowlist. DOMPurify's broader default also rejects benign
+    // custom schemes and permits data: on some elements.
+    ALLOWED_URI_REGEXP: /^[\s\S]*$/,
     ALLOW_DATA_ATTR: false,
     ALLOW_ARIA_ATTR: false
   });
@@ -3287,12 +3473,41 @@ function renderMarkdown(source) {
     }
     const allowed = element.localName === "input" ? checkboxAttributes : viewerAttributes;
     for (const attribute of [...element.attributes]) {
-      if (!allowed.has(attribute.name)) element.removeAttribute(attribute.name);
+      if (urlAttributes.has(attribute.name) && hasDangerousScheme(attribute.value)) {
+        element.removeAttribute(attribute.name);
+        continue;
+      }
+      const generatedFootnoteId = attribute.name === "id" && attribute.value.startsWith(footnotePrefix) && footnoteIdTags.has(element.localName);
+      if (!allowed.has(attribute.name) && !generatedFootnoteId) element.removeAttribute(attribute.name);
     }
     if (element.localName === "input") element.setAttribute("disabled", "");
   }
-  const usedIds = /* @__PURE__ */ new Set();
+  const footnoteLabel = fragment.querySelector(
+    `section > h2#${footnotePrefix}heading`
+  );
+  const footnoteSection = footnoteLabel == null ? void 0 : footnoteLabel.parentElement;
+  if (footnoteLabel && footnoteSection) {
+    footnoteSection.setAttribute("data-footnotes", "");
+    for (const reference of fragment.querySelectorAll(
+      `sup > a[id^="${footnotePrefix}ref-"]`
+    )) {
+      reference.setAttribute("data-footnote-ref", "");
+      reference.setAttribute("aria-describedby", footnoteLabel.id);
+    }
+    for (const [footnoteIndex, item] of [...footnoteSection.querySelectorAll(":scope > ol > li")].entries()) {
+      const backlinks = item.querySelectorAll(
+        `a[href^="#${footnotePrefix}ref-"]`
+      );
+      backlinks.forEach((backlink, referenceIndex) => {
+        backlink.setAttribute("data-footnote-backref", "");
+        const occurrence = referenceIndex === 0 ? "" : ` (${referenceIndex + 1})`;
+        backlink.setAttribute("aria-label", `Back to citation ${footnoteIndex + 1}${occurrence}`);
+      });
+    }
+  }
+  const usedIds = new Set([...fragment.querySelectorAll("[id]")].map((element) => element.id));
   for (const heading of fragment.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
+    if (heading.id.startsWith(footnotePrefix)) continue;
     const base = (heading.textContent ?? "").toLowerCase().replace(/[^\p{L}\p{N} -]/gu, "").replace(/ /g, "-");
     let id = base;
     let duplicate = 0;
@@ -3301,7 +3516,7 @@ function renderMarkdown(source) {
     heading.id = id;
   }
   wikilinks.forEach((target, index) => {
-    const placeholder = fragment.querySelector(`a[href="#${prefix}${index}"]`);
+    const placeholder = fragment.querySelector(`a[href="#${wikilinkPrefix}${index}"]`);
     if (!placeholder) return;
     placeholder.removeAttribute("href");
     placeholder.setAttribute("data-wikilink", target);
@@ -3318,6 +3533,31 @@ function escapeHtml(text2) {
     '"': "&quot;",
     "'": "&#39;"
   })[character] ?? character);
+}
+function hasDangerousScheme(address) {
+  var _a2;
+  let normalized = address;
+  while (true) {
+    const decoded = decodeSchemeEscapes(normalized);
+    if (decoded === normalized) break;
+    normalized = decoded;
+  }
+  normalized = normalized.replace(/[\u0000-\u0020\u007f-\u009f\s]/gu, "");
+  const scheme = (_a2 = /^([a-z][a-z0-9+.-]*):/i.exec(normalized)) == null ? void 0 : _a2[1].toLowerCase();
+  return scheme !== void 0 && dangerousSchemes.has(scheme);
+}
+function decodeSchemeEscapes(value) {
+  return value.replace(/&#(?:x([\da-f]+)|(\d+));?/gi, (_entity, hexadecimal, decimal) => {
+    const codePoint = Number.parseInt(hexadecimal ?? decimal, hexadecimal ? 16 : 10);
+    if (!Number.isFinite(codePoint) || codePoint > 1114111) return "�";
+    return String.fromCodePoint(codePoint || 65533);
+  }).replace(/&(amp|colon|tab|newline|percnt);/gi, (entity) => ({
+    "&amp;": "&",
+    "&colon;": ":",
+    "&tab;": "	",
+    "&newline;": "\n",
+    "&percnt;": "%"
+  })[entity.toLowerCase()] ?? entity).replace(/%([\da-f]{2})/gi, (_escape, byte) => String.fromCharCode(Number.parseInt(byte, 16)));
 }
 const ALIAS = Symbol.for("yaml.alias");
 const DOC = Symbol.for("yaml.document");

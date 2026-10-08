@@ -40,13 +40,25 @@ Text placed directly inside the element without the script is not read. Assignin
 ## Output
 
 - Markdown is parsed as GitHub-flavoured Markdown.
-- The result is sanitized before insertion. Only these elements are kept: `p`, `br`, `hr`, `h1`–`h6`, `strong`, `em`, `del`, `s`, `blockquote`, `ul`, `ol`, `li`, `pre`, `code`, `a`, `img`, `table`, `thead`, `tbody`, `tr`, `th`, `td`, and `input` with `type="checkbox"` for task lists. Only these attributes are kept: `href`, `src`, `alt`, `title`, `start`, `colspan`, `rowspan`, `id` on headings, and `type`, `checked` and `disabled` on task-list checkboxes. Raw HTML using those elements and attributes survives sanitizing. Data and ARIA attributes, scripts, styles, frames and other elements outside the list are removed.
+- The result is sanitized before insertion. Only these elements are kept: `p`, `br`, `hr`, `h1`–`h6`, `strong`, `em`, `del`, `s`, `blockquote`, `ul`, `ol`, `li`, `pre`, `code`, `a`, `sup`, `section`, `img`, `table`, `thead`, `tbody`, `tr`, `th`, `td`, and `input` with `type="checkbox"` for task lists. Only these attributes are kept: `href`, `src`, `alt`, `title`, `start`, `colspan`, `rowspan`, generated `id` values on headings and footnotes, and `type`, `checked` and `disabled` on task-list checkboxes. Raw HTML using those elements and attributes survives sanitizing, except that authored `id` values are removed. Data and ARIA attributes, scripts, styles, frames and other elements outside the list are removed. The element adds the data and ARIA attributes needed by generated wikilinks and footnotes after sanitizing. For every kept URL attribute, all schemes are allowed except `javascript:`, `vbscript:` and `data:`. Those three schemes are removed even when their name uses mixed case, begins after whitespace or control characters, or contains character references or percent encoding.
 - Task-list items (`- [ ]` and `- [x]`) render with a disabled checkbox in place of the bullet. The checkbox shows state; it does not change it.
 - Image `src` values are kept as written; relative addresses resolve against the page address.
 
 ### Heading ids
 
 Each heading receives an `id` so that `#section` links can address it. The id follows the GitHub convention: the heading text in lowercase, with characters other than letters, digits, spaces and hyphens removed, and spaces replaced by hyphens. A repeated id receives the suffix `-1`, `-2` and so on, in document order. Links to `#section` within the content scroll to the heading through normal browser behaviour.
+
+## Footnotes
+
+`[^label]` creates a numbered superscript link when the document contains a matching `[^label]: …` definition. Labels match without regard to case. A label is one to 1,000 UTF-8 bytes, contains no whitespace, `[` or `]`, and may contain other punctuation. A citation without a matching definition stays literal text. Numbers follow the order of first citation, regardless of where definitions appear. Repeated citations of one label show the same number, and every citation has its own anchor target. Adjacent citations have a superscript comma between their separate links, so `text[^a][^b]` reads as `text¹,²`. An invisible positioned overlay enlarges each target without adding horizontal space, and adjacent targets do not overlap.
+
+Footnote syntax inside an inline code span or fenced code block stays code. Citations may appear anywhere inline Markdown is parsed, including headings and list items.
+
+A definition may have zero to three leading spaces. Four leading spaces make an indented code block instead. A definition can directly follow a paragraph without a blank line. Its body is a block container: the first paragraph may continue on following plain or indented lines; indented content after a blank line can form further paragraphs, lists, quotes or code blocks. A blank line followed by unindented text ends the definition. An unindented heading, list, fence or another definition also ends it, including after a hard-break line.
+
+The element appends an ordered footnotes list to the end of the rendered document. The list follows first-citation order and includes only definitions that the document cites. Each definition body renders as Markdown blocks, followed by links back to every place where it is cited. Footnote content may include ordinary links and wikilinks. Those links behave like the same links in the main text and dispatch `linkclick` when the [Links](#links) rules say they do.
+
+Footnote marker and back-link addresses begin with `#`, so the browser scrolls between the citation and the footnote without dispatching `linkclick`. The generated ids do not collide with heading ids, footnotes in another `<tv-markdown>` element, or other generated footnote ids on the page.
 
 ## Frontmatter
 
@@ -80,7 +92,7 @@ A page that wants wikilinks to behave as addresses, for example so that a modifi
 
 ## Links
 
-Markdown links render as ordinary `<a href>` elements with the `href` as written.
+Markdown links render as ordinary `<a href>` elements with the `href` as written. Addresses using any scheme other than `javascript:`, `vbscript:` or `data:` survive sanitizing, including application schemes such as `autofile:`.
 
 A click with the primary button on any link, whatever modifier keys are held, dispatches `linkclick` on the element first. The exception is a link whose `href` starts with `#`, which moves to its heading through normal browser behaviour. If a listener calls `preventDefault()`, nothing else happens and the page handles the link. Otherwise the browser does what it normally does for that click: it follows the link, or opens it in a new tab or window when a modifier key is held. Inside a Television artifact, Television records a followed link and provides Back and Forward. A wikilink without an address has no browser behaviour to fall back on.
 
@@ -104,6 +116,7 @@ Beyond the copied rules:
 
 - Wikilinks look the same as ordinary links. Pages that want them to differ select them by `data-wikilink`.
 - Links and wikilinks show a focus outline when focused from the keyboard.
+- Footnotes are separated from the main text, their screen-reader heading is visually hidden, and back-links stay beside the footnote text. Citation links have no underline and sit against the surrounding text and adjacent citation comma without adding horizontal space. An invisible positioned overlay enlarges each target, mostly vertically, without overlapping the next citation's target.
 - Task-list checkboxes hang in the list indent in place of the bullet.
 - The frontmatter properties panel is a muted panel with rounded corners: keys in a muted column capped at 40% of the width, values beside them, and list items as small rounded tags.
 - Built-in colour defaults follow the `color-scheme` in effect for the element, so a page that declares a dark scheme gets dark defaults outside Television.
@@ -166,9 +179,9 @@ Clicking a link to another document opens it inside the page and adds an entry t
 
 The built skill, in `skills/tv-markdown/`, contains:
 
-- `SKILL.md`: when to use the skill, how to load it (copy `tv-markdown.js` and `tv-markdown.css` next to the artifact `index.html`), both input forms, wikilinks, handling `linkclick`, [Interactivity](#interactivity) with its conditions, and short examples;
+- `SKILL.md`: when to use the skill, how to load it (copy `tv-markdown.js` and `tv-markdown.css` next to the artifact `index.html`), both input forms, footnotes, wikilinks, handling `linkclick`, [Interactivity](#interactivity) with its conditions, and short examples;
 - `tv-markdown.js`, with the parser and sanitizer bundled;
 - `tv-markdown.css`, copied from [`style.css`](style.css);
 - `THIRD-PARTY-NOTICES.txt`, with the licences for Marked, DOMPurify and YAML.
 
-The source package, in `packages/tv-markdown/`, holds the element code, `SKILL.md` and tests: unit tests for indentation removal, heading ids, wikilink parsing and sanitizing, and browser tests for rendering, the precedence of the property over inline content, `linkclick` and `render`. The repository layout and build are specified in [the repository specification](../index.md).
+The source package, in `packages/tv-markdown/`, holds the element code, `SKILL.md` and tests: unit tests for indentation removal, heading ids, footnotes, wikilink parsing and sanitizing, and browser tests for rendering, anchor scrolling, the precedence of the property over inline content, `linkclick` and `render`. The repository layout and build are specified in [the repository specification](../index.md).

@@ -1,6 +1,6 @@
 ---
 name: tv-markdown
-description: Render Markdown as Television prose in an HTML artifact, with safe formatting, heading links, task lists, and page-controlled wikilinks.
+description: Render Markdown as Television prose in an HTML artifact, with safe formatting, heading links, footnotes, task lists, and page-controlled wikilinks.
 ---
 
 # Render Markdown in an artifact
@@ -56,9 +56,21 @@ A document can start with YAML between a first-line `---` and a closing `---` or
 
 Add `show-frontmatter` to display a properties panel above the content. It is hidden by default. Adding or removing the attribute later renders the current document again. Invalid YAML appears as raw text in a code block when the panel is shown.
 
+## Add footnotes
+
+Use `[^label]` for a citation and define it on its own line. Labels are case-insensitive. Citations are numbered by first use. Repeating a label uses the same number, and the footnote links back to every citation. Adjacent citations display with a comma between their separate links. Definitions without a citation are not shown.
+
+```markdown
+A short claim.[^source] The same source applies here.[^source]
+
+[^source]: [Source](https://example.org/source). Supports both claims.
+```
+
+A definition may directly follow a paragraph and may have zero to three leading spaces. Plain following lines continue its first paragraph. After a blank line, indent content by four spaces to add another paragraph, list or other block. Footnote content supports Markdown blocks, links and wikilinks. Links inside a footnote behave like links in the main text. Citation and back-link anchors scroll within the page without dispatching `linkclick`.
+
 ## Handle links
 
-Ordinary Markdown links have their authored `href`. Links to a heading, such as `[Sources](#sources)`, use normal browser scrolling. Other primary-button clicks dispatch a bubbling, cancelable `linkclick` event before browser navigation. The event is a `MouseEvent` with the original pointer position and modifier keys. It has `href`, `wikilink`, and `anchor` properties.
+Ordinary Markdown links have their authored `href`. The sanitizer keeps relative addresses and every scheme except `javascript:`, `vbscript:` and `data:`, so application links such as `autofile:///reference/x` remain available to the page. Links to a heading, such as `[Sources](#sources)`, use normal browser scrolling. Other primary-button clicks dispatch a bubbling, cancelable `linkclick` event before browser navigation. The event is a `MouseEvent` with the original pointer position and modifier keys. It has `href`, `wikilink`, and `anchor` properties.
 
 `[[target]]` and `[[target|label]]` become focusable links with no address. A click or Enter dispatches `linkclick` with the target in `wikilink`; the element leaves the meaning of that target to your page. Inside a Markdown table, escape the separator as `[[target\|label]]`. Wikilink syntax inside code remains code.
 
@@ -84,7 +96,7 @@ documentView.addEventListener('render', () => {
 });
 ```
 
-The element removes scripts, styling, data attributes from source Markdown, and other content outside its allowlist. Keep application state and controls in the page around it.
+The element removes scripts, styling, data attributes from source Markdown, dangerous link schemes, and other content outside its allowlist. Keep application state and controls in the page around it.
 
 ## Make it live when the environment allows
 
