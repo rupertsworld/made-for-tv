@@ -7,9 +7,10 @@ extensionless JSON resource.
 
 ## Install and run
 
-Node.js 24 or later is required. Go 1.22 is also needed for `./setup.sh`.
-From `servers/`, `./setup.sh` builds every server and links the CLIs onto
-your PATH, or build just this one:
+Node.js 24 or later is required.
+[Get started with the servers](../../README.md#get-started-with-the-servers)
+walks through installing and using it. From `servers/`, `./setup.sh` builds
+the servers and links their commands onto your PATH, or build just this one:
 
 ```sh
 npm install

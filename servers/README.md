@@ -1,23 +1,25 @@
 # Servers
 
-These local servers give Television artifacts live access to files and notes. Bellhop starts services and mounts them under one address.
+These servers let a Television artifact read and change files on your computer, and update as soon as the files change.
 
-- [file-server](file-server/README.md) serves a directory over HTTP and WebSocket.
-- [vault-server](vault-server/README.md) serves files and structured Markdown records.
-- [Bellhop](bellhop/README.md) starts and mounts local HTTP services.
+- [file-server](file-server/README.md) serves any folder over HTTP and WebSocket.
+- [vault-server](vault-server/README.md) serves a folder of Markdown notes, and also gives each note as JSON.
+- [Bellhop](bellhop/README.md) is optional: it runs several servers under one address.
 
-The [specification](spec/index.md) describes the Node server contracts and links to the Bellhop contract.
+To install one and use it from an artifact, follow [Get started with the servers](../README.md#get-started-with-the-servers) in the repository README. The [specification](spec/index.md) describes the file-server and vault-server contracts and links to the Bellhop contract.
 
 ## Build and install
 
-The Node packages are private npm workspaces, and the binaries are not published to npm. Node 24 and Go 1.22 are required. From a clone of made-for-tv:
+From a clone of made-for-tv:
 
 ```sh
 cd made-for-tv/servers
 ./setup.sh
 ```
 
-`setup.sh` installs npm dependencies, builds all three servers, and links `file-server`, `vault-server`, and `bellhop` into `~/.local/bin`. Pass another directory on your PATH as the first argument to put the links there. Run `npm run build` after pulling changes to rebuild the Node servers; run `go build -o bin/bellhop ./cmd/bellhop` in `bellhop/` to rebuild Bellhop.
+`setup.sh` needs Node.js 24 or later. It installs the npm dependencies, builds file-server and vault-server, and links the `file-server` and `vault-server` commands into `~/.local/bin`. When [Go](https://go.dev) 1.22 or later is installed, it also builds Bellhop and links `bellhop`. To put the links in another folder on your PATH, pass it as the first argument: `./setup.sh ~/bin`.
+
+After pulling changes, run `npm run build` here to rebuild the Node servers, and `go build -o bin/bellhop ./cmd/bellhop` in `bellhop/` to rebuild Bellhop. The links keep working.
 
 To build and test without linking commands:
 
@@ -33,10 +35,13 @@ go test ./...
 
 ## Install the server skills
 
-Each server's skill is in its `skill/` folder. Install them with the other made-for-tv skills; they appear under Server Skills:
+Each server's skill is in its `skill/` folder. Install one with the skills CLI:
 
 ```sh
-npx skills add rupertsworld/made-for-tv
+npx skills add rupertsworld/made-for-tv --skill file-server
+npx skills add rupertsworld/made-for-tv --skill vault-server
 ```
+
+Without `--skill`, the CLI lists every made-for-tv skill, with these two under Server Skills.
 
 The [repository MIT licence](../LICENSE) covers these servers.

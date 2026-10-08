@@ -12,7 +12,7 @@ Config lives at `~/.bellhop.json`:
 
 ```json
 {
-  "allowed_origins": ["http://localhost:3000"],
+  "allowed_origins": ["http://localhost:*", "http://127.0.0.1:*"],
   "mounts": [
     {"name": "files", "command": ["file-server", "/home/example/files"]}
   ]

@@ -20,6 +20,10 @@ To install without the CLI, copy the built files of a skill, such as [`skills/pa
 
 To use the elements with Television styles, also install Television, which provides the `television` skill these skills refer to.
 
+Then ask your agent for an artifact that uses a skill, for example:
+
+> Make an artifact that shows `notes/trip.md` with tv-markdown.
+
 ## Skills
 
 ### [tv-markdown](skills/packages/tv-markdown/README.md)
@@ -59,23 +63,62 @@ To install a theme, copy its folder from [`themes/`](themes/) into the themes fo
 
 ## Servers
 
-[`servers/`](servers/) gives Television artifacts live files and notes. Bellhop brings the services together under one address.
+The servers let an artifact read and change files on your computer while it is open, and update as soon as the files change. There are two:
 
-- [file-server](servers/file-server/README.md) serves a directory as files and change events.
-- [vault-server](servers/vault-server/README.md) adds structured Markdown records to the file service.
-- [Bellhop](servers/bellhop/README.md) starts and mounts local services.
+- [file-server](servers/file-server/README.md) serves any folder. Each file has its own URL, a folder URL returns its listing as JSON, and a WebSocket tells the artifact when something changes.
+- [vault-server](servers/vault-server/README.md) does the same for a folder of Markdown notes, and also gives each note as JSON: its frontmatter fields, its body and its links.
 
-The binaries are built from a clone; they are not published to npm. Run these commands to install dependencies, build all three, and link their commands into `~/.local/bin`:
+Neither server has a login. Each listens only on your own computer unless you choose otherwise.
+
+### Get started with the servers
+
+You need [Node.js](https://nodejs.org) 24 or later and git.
+
+1. Download and build the servers. This links the `file-server` and `vault-server` commands into `~/.local/bin`:
+
+   ```sh
+   git clone https://github.com/rupertsworld/made-for-tv
+   cd made-for-tv/servers
+   ./setup.sh
+   ```
+
+   If your shell then says `command not found: file-server`, add that folder to your PATH, for example with `export PATH="$HOME/.local/bin:$PATH"` in `~/.zshrc`.
+
+2. Start a server on a folder and leave it running:
+
+   ```sh
+   file-server ~/Documents/notes
+   ```
+
+   It prints the address it serves, `url: http://127.0.0.1:8765`. Open that address in a browser: a JSON list of the folder's files means it works. For a folder of Markdown notes, run `vault-server ~/Documents/notes` instead; it prints `url: http://127.0.0.1:4747`.
+
+3. Install the server's skill, so your agent knows how to use it:
+
+   ```sh
+   npx skills add rupertsworld/made-for-tv --skill file-server
+   ```
+
+   Use `--skill vault-server` for vault-server.
+
+4. Ask your agent for an artifact, and give it the address:
+
+   > Make an artifact that lists the files at http://127.0.0.1:8765 and updates when they change.
+
+### Use the servers over Tailscale
+
+If Television runs on a different device from the files, for example on your laptop while the files are on a home server, start the server on the computer's [Tailscale](https://tailscale.com) address instead:
 
 ```sh
-git clone https://github.com/rupertsworld/made-for-tv
-cd made-for-tv/servers
-./setup.sh
+file-server ~/Documents/notes --host "$(tailscale ip -4)"
 ```
 
-Pass another bin directory to `setup.sh` if needed. The [server setup guide](servers/README.md) has details.
+It prints an address such as `url: http://100.101.102.103:8765`. With MagicDNS on, `http://<computer-name>:8765` reaches it too. Give that address to your agent. If the `tailscale` command is not installed, copy the computer's address from the Tailscale app.
 
-Each server has a skill that teaches an agent its HTTP contract. `npx skills add rupertsworld/made-for-tv` offers them under Server Skills, beside the artifact skills.
+Only devices on your tailnet can reach the server, but every one of them can read and change the files, because the servers have no login. The server then answers only on that address, not on `127.0.0.1`.
+
+### Several servers under one address
+
+[Bellhop](servers/bellhop/README.md) runs several servers and makes them reachable under one address, such as `http://127.0.0.1:2355/notes/` and `http://127.0.0.1:2355/photos/`. You do not need it to get started. `setup.sh` builds it when [Go](https://go.dev) 1.22 or later is installed.
 
 ## Layout
 
