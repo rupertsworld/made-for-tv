@@ -1,8 +1,18 @@
 {
-  "name": "file-server",
-  "private": true,
+  "name": "@rupertsworld/file-server",
   "version": "0.2.0",
   "description": "Serve a live directory over HTTP and WebSocket.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rupertsworld/made-for-tv.git",
+    "directory": "servers/file-server"
+  },
+  "homepage": "https://github.com/rupertsworld/made-for-tv/tree/main/servers/file-server",
+  "bugs": "https://github.com/rupertsworld/made-for-tv/issues",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
     "file-server": "dist/src/cli.js"
@@ -20,6 +30,7 @@
   "types": "dist/src/server.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.build.json && chmod +x dist/src/cli.js",
+    "prepack": "npm run build",
     "pretest": "npm run lint && npm run build",
     "test": "node --test test/*.test.ts",
     "lint": "tsc -p tsconfig.json --noEmit"
@@ -29,7 +40,9 @@
   },
   "files": [
     "dist/src",
-    "skill"
+    "skill",
+    "README.md",
+    "LICENSE"
   ],
   "dependencies": {
     "@types/express": "^5.0.3",

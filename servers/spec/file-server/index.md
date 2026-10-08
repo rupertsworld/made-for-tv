@@ -19,7 +19,7 @@ The shared [approval boundary](../index.md#approval-boundary) applies.
 
 ## Distribution
 
-The package is `file-server`, distributed
+The package is `@rupertsworld/file-server`, distributed
 [as shared](../index.md#distribution); it also exports the server and its
 protocol-extension types — see [the API](server.md#api).
 

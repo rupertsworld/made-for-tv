@@ -7,13 +7,15 @@ description: Read, list, write, edit, or watch files and structured records in a
 
 Use the supplied server URL as `<base>`. If no server is running, run
 `vault-server` and use the printed `url:` value. If the command is unavailable,
-build it from the repository (Node.js 24 or later; `./setup.sh` links the
-CLIs into `~/.local/bin`, or pass another PATH directory as its argument):
+run the npm package directly (Node.js 24 or later):
 
 ```sh
-git clone https://github.com/rupertsworld/made-for-tv
-cd made-for-tv/servers && ./setup.sh
+npx @rupertsworld/vault-server /path/to/vault
 ```
+
+The first run asks to download the package. To keep a `vault-server` command
+on your PATH, run `npm install -g @rupertsworld/vault-server` and then
+`vault-server /path/to/vault`. Use the printed `url:` value as `<base>`.
 
 ## Base file protocol
 

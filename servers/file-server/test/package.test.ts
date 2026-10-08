@@ -14,8 +14,11 @@ test("npm package ships the bundled skill and built conformance subpath", async 
   const { stdout } = await run("npm", ["pack", "--dry-run", "--json", "--ignore-scripts", "--cache", cache], {
     cwd: process.cwd(),
   });
-  const result = JSON.parse(stdout) as Array<{ files: Array<{ path: string }> }>;
+  const result = JSON.parse(stdout) as Array<{ name?: string; files: Array<{ path: string }> }>;
+  assert.equal(result[0]?.name, "@rupertsworld/file-server");
   const files = new Set(result[0]?.files.map(({ path }) => path));
+  assert(files.has("README.md"));
+  assert(files.has("LICENSE"));
   assert(files.has("skill/SKILL.md"));
   assert(files.has("dist/src/conformance/index.js"));
   assert(files.has("dist/src/conformance/index.d.ts"));
@@ -34,7 +37,7 @@ test("npm package ships the bundled skill and built conformance subpath", async 
   ]) {
     assert(files.has(`dist/src/conformance/${concern}.js`), concern);
   }
-  const subpath: string = "file-server/conformance";
+  const subpath: string = "@rupertsworld/file-server/conformance";
   const conformance = await import(subpath) as { defineFileServerConformance?: unknown };
   assert.equal(typeof conformance.defineFileServerConformance, "function");
 });
@@ -79,7 +82,8 @@ test("a clean TypeScript consumer can compile against the packed public declarat
     mkdir(modules, { recursive: true }),
   ]);
   await run("tar", ["-xzf", archive, "-C", unpacked]);
-  await rename(join(unpacked, "package"), join(modules, "file-server"));
+  await mkdir(join(modules, "@rupertsworld"), { recursive: true });
+  await rename(join(unpacked, "package"), join(modules, "@rupertsworld", "file-server"));
 
   const workspaceModules = join(process.cwd(), "..", "node_modules");
   await symlink(join(workspaceModules, "express"), join(modules, "express"), "dir");
@@ -91,8 +95,8 @@ import {
   type FileChangeEvent,
   type FileServerExtension,
   type FileServerExtensionContext,
-} from "file-server";
-import { defineFileServerConformance } from "file-server/conformance";
+} from "@rupertsworld/file-server";
+import { defineFileServerConformance } from "@rupertsworld/file-server/conformance";
 
 const extension: FileServerExtension = {
   handle(_request, _response, context: FileServerExtensionContext) {

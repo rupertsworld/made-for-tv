@@ -8,24 +8,23 @@ extensionless JSON resource.
 ## Install and run
 
 Node.js 24 or later is required.
-[Get started with the servers](../../README.md#get-started-with-the-servers)
-walks through installing and using it. From `servers/`, `./setup.sh` builds
-the servers and links their commands onto your PATH, or build just this one:
+[Get started with the servers](https://github.com/rupertsworld/made-for-tv/blob/main/README.md#get-started-with-the-servers)
+walks through using it. Run the npm package without installing it globally:
 
 ```sh
-npm install
-npm -w vault-server run build
-ln -s "$PWD/vault-server/dist/src/cli.js" ~/.local/bin/vault-server   # or anywhere on your PATH
+npx @rupertsworld/vault-server /path/to/vault
 ```
 
-Check it works:
+The first run asks to download the package. It prints an address such as
+`url: http://127.0.0.1:4747`. Open that address or run:
 
 ```sh
-vault-server /path/to/vault
-# prints  url: http://127.0.0.1:4747
 curl http://127.0.0.1:4747/
-# a JSON directory listing means it is working
 ```
+
+The JSON directory listing means it works. For a permanent `vault-server`
+command, run `npm install -g @rupertsworld/vault-server`, then
+`vault-server /path/to/vault`.
 
 The default address is `http://127.0.0.1:4747`. `--host` changes the bind
 address and `--port` selects a port. Without `--port`, the server tries ports
@@ -168,7 +167,7 @@ bodyFormat? })`. `ready` includes both the base watcher and the initial record
 index.
 
 ```js
-import { VaultServer } from "vault-server";
+import { VaultServer } from "@rupertsworld/vault-server";
 
 const server = new VaultServer({ root: "/path/to/vault" });
 await server.listen({ port: 4747 });
@@ -184,5 +183,15 @@ the check and the operation. This race is not reachable through server
 operations. Use kernel-enforced confinement when the threat model includes a
 hostile local process. Hard links and bind mounts are outside this boundary.
 
-The complete contract is in [`spec/vault-server/`](../spec/vault-server/), read together
-with [`spec/file-server/server.md`](../spec/file-server/server.md).
+The complete contract is in [`spec/vault-server/`](https://github.com/rupertsworld/made-for-tv/tree/main/servers/spec/vault-server), read together
+with [`spec/file-server/server.md`](https://github.com/rupertsworld/made-for-tv/blob/main/servers/spec/file-server/server.md).
+
+## Develop
+
+From a clone of made-for-tv, run these commands in `servers/`:
+
+```sh
+npm install
+npm run build
+npm test
+```

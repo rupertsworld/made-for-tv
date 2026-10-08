@@ -313,7 +313,7 @@ The package exports the server and its extension types, so a host can run or
 extend the protocol in its own process instead of spawning the binary.
 
 ```js
-import { FileServer } from "file-server";
+import { FileServer } from "@rupertsworld/file-server";
 
 const server = new FileServer({ root: "/path/to/directory" });
 await server.listen({ port: 8765 });

@@ -1,4 +1,4 @@
-import { defineFileServerConformance } from "file-server/conformance";
+import { defineFileServerConformance } from "@rupertsworld/file-server/conformance";
 
 import { VaultServer } from "../src/server.ts";
 

@@ -128,7 +128,7 @@ function readPackageVersion(): string {
   for (;;) {
     try {
       const manifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")) as { name?: string; version?: string };
-      if (manifest.name === "file-server" && typeof manifest.version === "string") return manifest.version;
+      if (manifest.name === "@rupertsworld/file-server" && typeof manifest.version === "string") return manifest.version;
     } catch { /* Search upward from both source and built entry points. */ }
     const parent = dirname(directory);
     if (parent === directory) throw new Error("could not read file-server version");

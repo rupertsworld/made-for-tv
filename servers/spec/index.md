@@ -18,24 +18,26 @@ agent its contract. Built for
   list, write, edit, delete, and subscribe to path changes at real URLs.
 - [vault-server](vault-server/index.md) — extends file-server with structured JSON records
   for markdown files, enriched listings, and record mutations.
-- [Bellhop](../bellhop/spec/index.md) — runs local services and mounts them
-  under one address.
 
 ## Project structure
 
 The two Node servers live at `servers/<name>/` in made-for-tv — source in
 `src/`, tests in `test/`, skills in `skill/`, and contracts at
-`spec/<name>/`. Bellhop lives at `servers/bellhop/` with its own Go
-source, tests, and specification.
+`spec/<name>/`.
 
 ## Distribution
 
-Each Node server is a private npm workspace package named for its folder.
-Each provides a CLI binary and a skill with the same name. Packages are
-built from this repository and are not published to a registry. The skill
-ships inside the package, so a wire change and its skill update land
-in one commit. Both packages also export the server itself for embedding
-in another process. Bellhop is a Go module and builds the `bellhop` binary.
+The public npm packages are `@rupertsworld/file-server` and
+`@rupertsworld/vault-server`. Their binaries and bundled skills are named
+`file-server` and `vault-server`. Both packages require Node.js 24 or later.
+Run either package with `npx @rupertsworld/<name> <folder>`, or install it
+globally with `npm install -g @rupertsworld/<name>`. Each package builds before
+packing and includes its built code, skill, README, and MIT licence. Both
+packages also export the server for embedding in another process.
+
+For development, `servers/` is a private npm workspace root. Run `npm install`,
+`npm run build`, and `npm test` there. The vault-server package depends on
+`@rupertsworld/file-server`, resolved from the workspace during development.
 
 ## Approval boundary
 
@@ -84,11 +86,10 @@ must cover.
 The Node servers use Node ≥ 24, TypeScript, and Express. These are the mechanisms behind the
 contracts; the contract, not the mechanism, is the approval boundary.
 Tests are TypeScript run natively by `node --test` (type stripping),
-no compile step; the build exists for the shipped `dist`, via `pretest`. Internal module structure is
-the implementer's call.
+with no compile step. `pretest` and `prepack` build the shipped `dist`.
+Internal module structure is the implementer's call.
 
 ## Testing
 
 Node test conventions are laid out in [testing.md](testing.md); each
-server specification states what its suite covers. Bellhop has Go tests
-in `bellhop/internal/` and `bellhop/tests/e2e/`.
+server specification states what its suite covers.

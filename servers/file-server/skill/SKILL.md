@@ -10,15 +10,17 @@ path segment for URLs. Query parameters do not select or change resources.
 
 ## Install
 
-If no directory is being served yet and the `file-server` binary is missing,
-build it from the repository (Node.js 24 or later; `./setup.sh` links the
-CLIs into `~/.local/bin`, or pass another PATH directory as its argument):
+If no directory is being served yet, run `file-server /path/to/directory`.
+It requires Node.js 24 or later. If the command is unavailable, run the npm
+package directly:
 
 ```sh
-git clone https://github.com/rupertsworld/made-for-tv
-cd made-for-tv/servers && ./setup.sh
-file-server /path/to/directory
+npx @rupertsworld/file-server /path/to/directory
 ```
+
+The first run asks to download the package. To keep a `file-server` command
+on your PATH, run `npm install -g @rupertsworld/file-server` and then
+`file-server /path/to/directory`.
 
 To hide paths such as dependency folders, add `--ignore` with a `.gitignore`
 pattern; it can be repeated. `--ignore node_modules/` hides every

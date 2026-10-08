@@ -14,7 +14,10 @@ Beyond its server's coverage list, every skill covers:
 
 - starting the server when none is running — run `file-server` or
   `vault-server` and use the printed `url:`. When the binary is missing,
-  build it from a clone of this repository.
+  run `npx @rupertsworld/file-server <folder>` or
+  `npx @rupertsworld/vault-server <folder>`, or install the package globally
+  with `npm install -g @rupertsworld/file-server` or
+  `npm install -g @rupertsworld/vault-server`.
 - errors: every error is `{ "error": … }` with a meaningful status,
   surfaced rather than swallowed.
 

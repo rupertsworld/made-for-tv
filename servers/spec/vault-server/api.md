@@ -6,7 +6,7 @@ the record options below and a default listen range of `4747` through `4846`
 instead of the base range.
 
 ```js
-import { VaultServer } from "vault-server";
+import { VaultServer } from "@rupertsworld/vault-server";
 
 const server = new VaultServer({ root: "/path/to/vault" });
 await server.listen({ port: 4747 });

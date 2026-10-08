@@ -31,6 +31,7 @@ test/                        unit tests that span skills
 scripts/                     test runners, the screenshot script and its book covers
 docs/
   screenshots/               images of each skill shown in the READMEs
+README.md                    installing without the skills CLI, development, and adding a skill
 package.json                 the npm project: workspaces and shared tools
 tsconfig.spec.json           typechecks templates, Storybook and the tests in test/
 vitest.config.ts             unit test configuration

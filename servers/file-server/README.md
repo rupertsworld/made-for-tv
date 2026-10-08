@@ -10,24 +10,23 @@ model.
 ## Install and run
 
 Node.js 24 or later is required.
-[Get started with the servers](../../README.md#get-started-with-the-servers)
-walks through installing and using it. From `servers/`, `./setup.sh` builds
-the servers and links their commands onto your PATH, or build just this one:
+[Get started with the servers](https://github.com/rupertsworld/made-for-tv/blob/main/README.md#get-started-with-the-servers)
+walks through using it. Run the npm package without installing it globally:
 
 ```sh
-npm install
-npm -w file-server run build
-ln -s "$PWD/file-server/dist/src/cli.js" ~/.local/bin/file-server   # or anywhere on your PATH
+npx @rupertsworld/file-server /path/to/directory
 ```
 
-Check it works:
+The first run asks to download the package. It prints an address such as
+`url: http://127.0.0.1:8765`. Open that address or run:
 
 ```sh
-file-server /path/to/directory      # or no argument for the current directory
-# prints  url: http://127.0.0.1:8765
 curl http://127.0.0.1:8765/
-# a JSON directory listing means it is working
 ```
+
+The JSON directory listing means it works. Omit the directory argument to
+serve the current directory. For a permanent `file-server` command, run
+`npm install -g @rupertsworld/file-server`, then `file-server /path/to/directory`.
 
 `--host` (default `127.0.0.1`) and `--port` (default `8765`) adjust binding.
 
@@ -69,7 +68,7 @@ curl -X DELETE http://127.0.0.1:8765/photos/copy.jpg
 Directory `GET`s return a one-level JSON listing. `PUT` atomically creates or
 replaces any file and creates missing parents; `PATCH` performs an anchored
 literal edit of a UTF-8 text file; `DELETE` removes a file or directory tree.
-`OPTIONS` provides the CORS preflight response. See [`spec/file-server/`](../spec/file-server/) for the
+`OPTIONS` provides the CORS preflight response. See [`spec/file-server/`](https://github.com/rupertsworld/made-for-tv/tree/main/servers/spec/file-server) for the
 complete wire contract, CLI, and API.
 
 Open a WebSocket at `/`, or at the slash-terminated URL of any existing
@@ -79,7 +78,7 @@ has no history or replay. Dot-prefixed and ignored paths are absent from
 listings, return `404` on every method, and never produce change signals.
 
 The package exports `FileServer` and the protocol-extension types from its main
-entry point. The built `file-server/conformance` subpath
+entry point. The built `@rupertsworld/file-server/conformance` subpath
 registers the base contract tests against another server factory.
 
 ## Confinement
@@ -95,3 +94,13 @@ Hard links and bind mounts cannot be detected by path resolution and are
 outside this boundary. Within the root, file-server reads, writes, and deletes
 whatever it is asked to; use a narrower served root when a caller should reach
 less.
+
+## Develop
+
+From a clone of made-for-tv, run these commands in `servers/`:
+
+```sh
+npm install
+npm run build
+npm test
+```

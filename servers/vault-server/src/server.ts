@@ -13,7 +13,7 @@ import {
   type FileServerExtension,
   type FileServerExtensionContext,
   type ListenOptions,
-} from "file-server";
+} from "@rupertsworld/file-server";
 import express, { type NextFunction, type Request, type Response } from "express";
 
 import {

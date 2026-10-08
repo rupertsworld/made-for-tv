@@ -21,10 +21,10 @@ The shared [approval boundary](../index.md#approval-boundary) applies.
 
 ## Distribution
 
-The package is `vault-server`, distributed
+The package is `@rupertsworld/vault-server`, distributed
 [as shared](../index.md#distribution); it also exports the server
 itself — see [the API](api.md). It depends on
-`file-server`: `VaultServer` embeds its exported
+`@rupertsworld/file-server`: `VaultServer` embeds its exported
 `FileServer`, supplies its documented extension hooks for record routing,
 listing decoration, and event-path mapping, and delegates everything else to
 it. Byte serving, ranges, validators, raw writes and deletion, confinement,

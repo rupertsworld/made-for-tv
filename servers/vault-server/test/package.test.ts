@@ -14,7 +14,8 @@ test("npm package is version 0.5.0 and ships built entrypoints and the skill wit
   const { stdout } = await run("npm", ["pack", "--dry-run", "--json", "--ignore-scripts", "--cache", cache], {
     cwd: process.cwd(),
   });
-  const result = JSON.parse(stdout) as Array<{ version?: string; files: Array<{ path: string }> }>;
+  const result = JSON.parse(stdout) as Array<{ name?: string; version?: string; files: Array<{ path: string }> }>;
+  assert.equal(result[0]?.name, "@rupertsworld/vault-server");
   assert.equal(result[0]?.version, "0.5.0");
   const files = new Set(result[0]?.files.map(({ path }) => path));
   for (const required of [
@@ -25,6 +26,8 @@ test("npm package is version 0.5.0 and ships built entrypoints and the skill wit
     "dist/src/server.d.ts",
     "dist/src/server.js",
     "skill/SKILL.md",
+    "README.md",
+    "LICENSE",
   ]) {
     assert(files.has(required), required);
   }
