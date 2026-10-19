@@ -27,6 +27,7 @@ export const icons = {
   fileLock: icon('<path d="M9.5 1.75H4a.75.75 0 0 0-.75.75v11c0 .41.34.75.75.75h8c.41 0 .75-.34.75-.75V5L9.5 1.75Z"/><path d="M9.5 1.75V5h3.25M6 9V8a2 2 0 0 1 4 0v1m-4.5 0h5v3h-5z"/>'),
   preview: icon('<path d="M1.5 8s2.5-4 6.5-4 6.5 4 6.5 4-2.5 4-6.5 4-6.5-4-6.5-4Z"/><circle cx="8" cy="8" r="2"/>'),
   source: icon('<path d="m5.75 4.5-3.5 3.5 3.5 3.5m4.5-7L13.75 8l-3.5 3.5M9 3 7 13"/>'),
+  diff: icon('<circle cx="3.5" cy="4" r="1.5"/><path d="M3.5 5.5v3.6L7 12.6M4 13h3v-3"/><circle cx="12.5" cy="12" r="1.5"/><path d="M12.5 10.5V6.9L9 3.4M12 3H9v3"/>'),
   wrap: icon('<path d="M2 3.5h12M2 7.5h9.5a2.5 2.5 0 0 1 0 5H8m1.75-1.75L8 12.5l1.75 1.75M2 12.5h3"/>'),
 } as const;
 

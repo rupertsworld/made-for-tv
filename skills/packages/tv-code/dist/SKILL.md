@@ -116,10 +116,10 @@ If the environment documents no way to learn about changes, the view shows the f
 
 To show how the files differ from another version, such as another branch, give changed entries a `status` of `"added"`, `"modified"` or `"removed"` in `files` or in `list` results. The tree shows `A`, `M` or `D` after the name. Include removed files in the listing so the reader can open them, and read them from the other version.
 
-To show a comparison instead of a changed file, assign `frame`: a function from a path to the address of a page, such as a diff view, or `null` to show the file as usual. The pane shows that page in an iframe; the reader's **Show file** button switches to the file and back. The element calls `frame` again when the tree changes, so it follows a status that changes on `refresh`.
+To show the diff of a changed file, assign `diff`: a function from a path to an element showing its changes, such as an iframe with a diff view, or `null` for an unchanged file. The header's view toggle gains **Diff**, selected when the file opens, beside Preview and Source. Set `data-additions` and `data-deletions` on the element to show the line counts after the file name. Return the same element while the diff is the same; the element calls `diff` again when the tree changes, so it follows a status that changes on `refresh`.
 
 ```js
-viewer.frame = path => changes.has(path) ? diffPageUrl(path) : null;
+viewer.diff = path => changes.has(path) ? diffFrameFor(path) : null;
 ```
 
 ## Optional: share the open file in the address
@@ -151,7 +151,7 @@ viewer.addEventListener("select", ({ detail }) => {
 | `dim` | attribute | Name patterns shown dimmed, separated by spaces or commas, with `*` as a wildcard. Default: `.* node_modules dist build out coverage target __pycache__ .venv venv vendor`. Add your own build folders. |
 | `files` | property | All files at once. |
 | `connection` | property | `{ list?, read }` functions for files on demand. Omit `list` to show the file named by `selected`. |
-| `frame` | property | `path => address \| null`, or a promise of one. An address is shown in an iframe in place of that file, with a Show file toggle. |
+| `diff` | property | `path => element \| null`, or a promise of one. The element is the file's Diff view mode, selected by default; its `data-additions` and `data-deletions` show in the header. |
 | `status` | entry field | `"added"`, `"modified"` or `"removed"` in `files` and `list` entries, shown as `A`, `M` or `D` in the tree. |
 | `refresh(path?)` | method | Fetch through the connection again, for one changed path or for everything. |
 | `select` | event | The reader opened a file or changed the line selection. `detail` is `{ path, lines }`. Not sent when your script sets `selected` or `lines`. |

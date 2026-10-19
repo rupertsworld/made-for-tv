@@ -264,8 +264,12 @@ tv-code .cv-pane-progress-active::before { content: ""; display: block; width: 3
 tv-code .cv-pane-notice:empty { display: none; }
 tv-code .cv-pane-notice { padding: 8px 12px; border-bottom: 1px solid var(--_border); }
 tv-code .cv-pane-content { flex: 1; min-height: 0; overflow: auto; }
-/* A page shown in place of the file fills the content area. */
-tv-code .cv-pane-frame { display: block; width: 100%; height: 100%; border: 0; }
+/* A changed file's diff fills the content area; its counts follow the file name. */
+tv-code .cv-pane-diff { display: flex; height: 100%; }
+tv-code .cv-pane-diff > * { flex: 1; min-width: 0; border: 0; }
+tv-code .cv-diff-counts { display: inline-flex; gap: 6px; margin-left: 4px; font-family: var(--_font-mono); font-size: var(--_code-size); }
+tv-code .cv-diff-additions { color: var(--_added); }
+tv-code .cv-diff-deletions { color: var(--_removed); }
 tv-code .cv-pane-faded { opacity: .65; }
 tv-code .cv-pane-empty { display: grid; place-items: center; height: 100%; color: var(--_text-muted); }
 tv-code .cv-failure { display: flex; align-items: center; gap: 8px; color: var(--_text-muted); padding: 12px; }

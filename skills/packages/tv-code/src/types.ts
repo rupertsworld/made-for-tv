@@ -17,8 +17,12 @@ export interface EntryInput {
 /** How an entry differs from a version it is compared with, shown as a letter in the tree. */
 export type EntryStatus = "added" | "modified" | "removed";
 
-/** The address of a page to show in the file pane in place of a file, or nothing to show the file. */
-export type FrameFunction = (path: string) => string | null | undefined | Promise<string | null | undefined>;
+/**
+ * An element that shows how a file changed, such as an iframe with a diff
+ * view, or nothing for an unchanged file. Its `data-additions` and
+ * `data-deletions` attributes, when set, are shown in the file header.
+ */
+export type DiffFunction = (path: string) => HTMLElement | null | undefined | Promise<HTMLElement | null | undefined>;
 
 /** What `Connection.read` may resolve to. */
 export type ReadResult = string | Response | Blob | ArrayBuffer | ArrayBufferView;

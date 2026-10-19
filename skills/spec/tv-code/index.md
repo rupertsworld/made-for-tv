@@ -140,7 +140,7 @@ When the input changes, the element keeps the open file, the line selection and 
 | --------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Property  | `files`           | All files at once, as an array of entries or an object of paths to text. See [The `files` property](#the-files-property).                                                             |
 | Property  | `connection`      | An object with a `read` function and an optional `list` function. See [The `connection` property](#the-connection-property).                                                            |
-| Property  | `frame`           | A function from a file path to the address of a page to show in place of that file, or `null`. See [Pages in place of a file](#pages-in-place-of-a-file).                                |
+| Property  | `diff`            | A function from a file path to an element showing how that file changed, or `null`. See [Diffs of changed files](#diffs-of-changed-files).                                             |
 | Child     | `<tv-code-file>`, `<tv-code-folder>` | Files and folders written into the page. See [Child tags](#child-tags).                                                                                     |
 | Attribute | `label`           | The name of the root, such as a repository name, shown at the top of the sidebar. Defaults to `Files`.                                                                                  |
 | Attribute | `selected`        | The path of the open file. Reflects the property of the same name. See [Selection](#selection).                                                                                        |
@@ -197,7 +197,7 @@ The header stays at the top of the pane while the content scrolls. It shows:
 - **Actions.** Icon buttons with tooltips and accessible names:
   - **Preview / Source**, for Markdown and SVG files: a two-option toggle that sets the `show-source` attribute.
   - **Wrap lines**, for files shown as code: a toggle that sets the `wrap` attribute. `Alt+Z` does the same.
-  - **Show file**, first, for a file shown as a [page in its place](#pages-in-place-of-a-file): a toggle between that page and the file.
+  - For a file with a [diff](#diffs-of-changed-files), the view-mode toggle also offers **Diff**, and the line counts follow the file name.
   - **Find file**, always shown, last: opens the [file finder](#file-finder).
 
 The header shows no other details of the file.
@@ -216,14 +216,16 @@ The element decides how to show a file from its name and, when needed, its bytes
 - **Large files**, larger than 2 MB by the `size` of their entry or the `Content-Length` of the response, are not read. The pane shows the size and a `Show anyway` button.
 - **Other files** are read and shown as [code](#code). Text whose first 8,000 bytes contain a zero byte is binary, and is shown as a known binary file is.
 
-### Pages in place of a file
+### Diffs of changed files
 
-A page can show another page in place of a file, such as a comparison of the file with an earlier version. It assigns `frame`, a function that takes the path of a file and returns the address of the page, or `null` or `undefined` to show the file as usual. It may return a promise. The element calls it when a file is opened and whenever the tree changes, and calls nothing when `frame` is unset.
+A page can show how a file changed, such as a comparison with another version. It assigns `diff`, a function that takes the path of a file and returns an element showing its changes, such as an iframe holding a diff view, or `null` or `undefined` for an unchanged file. It may return a promise. The element calls it when a file is opened and whenever the tree changes, and calls nothing when `diff` is unset.
 
-- When it returns an address, the file pane shows that address in an iframe filling the content area below the header, and the element does not read the file. The header shows the path and **Show file**, unpressed, then Find file; the other actions do not apply.
-- Pressing **Show file** shows the file as usual, with its actions, and pressing it again returns to the page. The choice lasts while the file stays open; opening a file again shows its page.
-- When a change to the tree changes the address for the open file, the pane follows: it loads the new address, or shows the file when there is none. While the address stays the same, the page is not reloaded. The page in the frame keeps itself current; refreshes do not read a file shown as a page.
-- A function that throws or rejects counts as `null`, and the element logs the error.
+- For a file with a diff, the view-mode toggle in the header gains **Diff**, with a diff icon, after the views the file already has: Preview, Source and Diff for Markdown and SVG files; Preview and Diff for other images; Source and Diff for other files. Diff is selected when the file is opened.
+- With Diff selected, the element fills the content area below the header, and the element does not read the file. The page keeps the diff current. Wrap lines does not apply.
+- Choosing Preview or Source shows the file as usual, with its actions; for Markdown and SVG files it sets `show-source` as the two-way toggle does. The choice lasts while the file stays open; opening a file again selects Diff.
+- When the element has `data-additions` and `data-deletions` attributes, the header shows them after the file name as `+40 −39`, in the colours for added and removed lines, in every view mode. They follow changes to the attributes.
+- When a change to the tree gives the open file a different element, or none, the pane follows. While the function returns the same element, the element is not replaced, so the page returns the same element for as long as it shows the same diff.
+- Files without a diff keep the header and toggle described above. A function that throws or rejects counts as `null`, and the element logs the error.
 
 ### Code
 

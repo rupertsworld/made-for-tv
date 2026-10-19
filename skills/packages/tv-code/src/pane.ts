@@ -32,8 +32,9 @@ export class Pane {
   private wrapped = false;
   private source = false;
   private singleFile = false;
-  /** The page address offered for the current file, and whether the reader chose the file instead. */
-  private frame: { address: string; fileShown: boolean } | null = null;
+  /** The diff element offered for the current file, and whether it is the view shown. */
+  private diff: { element: HTMLElement; shown: boolean } | null = null;
+  private countsObserver: MutationObserver | null = null;
   onRetry?: () => void;
   onReveal?: (path: string) => void;
   onLinesChange?: (lines: LineRange | null) => void;
@@ -42,7 +43,7 @@ export class Pane {
   onToggleWrap?: () => void;
   onToggleSource?: () => void;
   onFind?: () => void;
-  onToggleFile?: () => void;
+  onViewMode?: (mode: "preview" | "source" | "diff") => void;
   resolveImage?: (path: string, force: boolean) => Promise<ImageSource | null>;
   hasImage?: (path: string, signal: AbortSignal) => boolean | Promise<boolean>;
 
@@ -56,8 +57,8 @@ export class Pane {
 
   /** Whether the last successfully displayed body belongs to this path. */
   hasBodyFor(path: string): boolean { return this.contentPath === path && this.result !== null; }
-  /** The page address offered for the current file, or null. */
-  get frameAddress(): string | null { return this.frame?.address ?? null; }
+  /** The diff element offered for the current file, or null. */
+  get diffElement(): HTMLElement | null { return this.diff?.element ?? null; }
   /** Whether the current path has been marked as removed. */
   get isDeleted(): boolean { return this.deleted; }
   /** Whether a Markdown image depends on a changed file. */
@@ -108,12 +109,20 @@ export class Pane {
   setShowSource(value: boolean): void { this.source = value; this.renderActions(); }
 
   /**
-   * Offer a page in place of the current file. Unless the reader chose the
-   * file, the page fills the content area until a file body is shown.
+   * Offer a diff of the current file as a view mode. When it is the view
+   * shown, the element fills the content area until a file body is shown.
    */
-  setFrame(address: string | null, fileShown: boolean): void {
-    this.frame = address ? { address, fileShown } : null;
-    if (address && !fileShown) {
+  setDiff(element: HTMLElement | null, shown: boolean): void {
+    if (element !== this.diff?.element) {
+      this.countsObserver?.disconnect();
+      this.countsObserver = null;
+      if (element) {
+        this.countsObserver = new MutationObserver(() => this.renderPath());
+        this.countsObserver.observe(element, { attributeFilter: ["data-additions", "data-deletions"] });
+      }
+    }
+    this.diff = element ? { element, shown } : null;
+    if (element && shown) {
       if (this.fadeTimer) clearTimeout(this.fadeTimer);
       this.fadeTimer = null;
       this.progress.classList.remove("cv-pane-progress-active");
@@ -123,13 +132,12 @@ export class Pane {
       this.result = null;
       this.deleted = false;
       this.contentPath = this.currentPath;
-      this.renderPath();
-      const current = this.content.firstElementChild;
-      // Keep a page that is already shown, with its own state and scroll.
-      if (!(current instanceof HTMLIFrameElement && current.getAttribute("src") === address)) {
-        this.content.replaceChildren(h("iframe", { className: "cv-pane-frame", src: address, title: this.currentPath ?? "" }));
+      // Keep an element that is already shown, with its own state and scroll.
+      if (this.content.firstElementChild?.firstElementChild !== element) {
+        this.content.replaceChildren(h("div", { className: "cv-pane-diff" }, element));
       }
     }
+    this.renderPath();
     this.renderActions();
   }
 
@@ -140,7 +148,7 @@ export class Pane {
     this.currentPath = path;
     this.entry = null;
     this.result = null;
-    this.frame = null;
+    this.clearDiff();
     this.deleted = false;
     this.renderPath();
     this.renderActions();
@@ -263,7 +271,7 @@ export class Pane {
     this.fadeTimer = null;
     this.currentPath = null;
     this.entry = null;
-    this.frame = null;
+    this.clearDiff();
     this.deleted = false;
     this.contentPath = null;
     this.result = null;
@@ -279,6 +287,12 @@ export class Pane {
       h("strong", { text: "No file open" }),
       h("span", { className: "cv-empty-hint" }, "Find a file with ",
         h("kbd", { text: shortcut }), h("kbd", { text: "P" }))));
+  }
+
+  private clearDiff(): void {
+    this.countsObserver?.disconnect();
+    this.countsObserver = null;
+    this.diff = null;
   }
 
   private replaceBody(element: HTMLElement, body: CodeView | MarkdownView | ImageView | null = null): void {
@@ -310,6 +324,12 @@ export class Pane {
       separate(crumb(segment, folder));
     }
     if (path) separate(h("strong", { className: "cv-path-file", text: segments.at(-1) ?? "" }));
+    const counts = this.diff?.element.dataset;
+    if (counts?.additions !== undefined && counts.deletions !== undefined) {
+      parts.push(h("span", { className: "cv-diff-counts" },
+        h("span", { className: "cv-diff-additions", text: `+${counts.additions}` }),
+        h("span", { className: "cv-diff-deletions", text: `\u2212${counts.deletions}` })));
+    }
     if (this.deleted) parts.push(h("span", { className: "cv-deleted", text: "Deleted" }));
     this.pathArea.replaceChildren(...parts);
   }
@@ -320,16 +340,24 @@ export class Pane {
     const path = this.currentPath;
     if (!path) { this.actions.replaceChildren(); return; }
     const kind = fileKind(path);
-    const framed = this.frame !== null && !this.frame.fileShown;
-    const sourceToggle = !framed && (kind === "markdown" || path.toLowerCase().endsWith(".svg"));
-    const isCode = !framed && (kind === "text" || this.source && sourceToggle);
+    const sourceToggle = kind === "markdown" || path.toLowerCase().endsWith(".svg");
+    const diffShown = this.diff?.shown ?? false;
+    const isCode = !diffShown && (kind === "text" || this.source && sourceToggle);
     const actions: HTMLElement[] = [];
-    if (this.frame) {
-      const button = this.action("Show file", icons.file, () => this.onToggleFile?.());
-      button.setAttribute("aria-pressed", String(this.frame.fileShown));
-      actions.push(button);
-    }
-    if (sourceToggle) {
+    if (this.diff) {
+      // A changed file adds Diff to the views it already has: rendered and
+      // source, or the one of them that applies.
+      const views: Array<[string, string, "preview" | "source" | "diff", boolean]> = [];
+      if (sourceToggle || kind === "image") views.push(["Preview", icons.preview, "preview", !diffShown && !(sourceToggle && this.source)]);
+      if (sourceToggle || kind !== "image") views.push(["Source", icons.source, "source", !diffShown && (!sourceToggle || this.source)]);
+      views.push(["Diff", icons.diff, "diff", diffShown]);
+      const buttons = views.map(([label, icon, mode, pressed]) => {
+        const button = this.action(label, icon, () => this.onViewMode?.(mode));
+        button.setAttribute("aria-pressed", String(pressed));
+        return button;
+      });
+      actions.push(h("div", { className: "cv-view-toggle", role: "group", "aria-label": "View mode" }, ...buttons));
+    } else if (sourceToggle) {
       const preview = this.action("Preview", icons.preview, () => { if (this.source) this.onToggleSource?.(); });
       const source = this.action("Source", icons.source, () => { if (!this.source) this.onToggleSource?.(); });
       preview.setAttribute("aria-pressed", String(!this.source));

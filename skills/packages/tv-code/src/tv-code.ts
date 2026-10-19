@@ -6,7 +6,7 @@ import { Pane } from "./pane";
 import { PreferenceStore } from "./preferences";
 import { Sidebar } from "./sidebar";
 import { TreeModel } from "./tree-model";
-import type { Connection, EntryInput, FrameFunction, LineRange } from "./types";
+import type { Connection, DiffFunction, EntryInput, LineRange } from "./types";
 import { h } from "./dom";
 import { Finder } from "./finder";
 import { detectLanguage, fileKind } from "./languages";
@@ -45,9 +45,9 @@ export class TvCodeElement extends HTMLElement {
   private warming: number | null = null;
   private warmed = false;
   private pendingHeading: { path: string; fragment: string } | null = null;
-  private frameValue: FrameFunction | null = null;
-  /** The open file whose contents the reader chose over its frame. */
-  private fileShownFor: string | null = null;
+  private diffValue: DiffFunction | null = null;
+  /** The open file for which the reader chose another view than its diff. */
+  private diffLeftFor: string | null = null;
 
   constructor() {
     super();
@@ -78,10 +78,10 @@ export class TvCodeElement extends HTMLElement {
     this.applyInput();
   }
 
-  /** A function giving the address of a page to show in place of a file, or nothing to show the file. */
-  get frame(): FrameFunction | null { return this.frameValue; }
-  set frame(value: FrameFunction | null | undefined) {
-    this.frameValue = value ?? null;
+  /** A function giving an element that shows how a file changed, or nothing for an unchanged file. */
+  get diff(): DiffFunction | null { return this.diffValue; }
+  set diff(value: DiffFunction | null | undefined) {
+    this.diffValue = value ?? null;
     if (this.selectedValue) void this.loadFile(this.selectedValue);
   }
 
@@ -152,10 +152,16 @@ export class TvCodeElement extends HTMLElement {
     pane.onShowAnyway = () => { if (this.selectedValue) void this.loadFile(this.selectedValue, true, true); };
     pane.onToggleWrap = () => this.toggleWrap();
     pane.onFind = () => this.openFinder();
-    pane.onToggleFile = () => {
+    pane.onViewMode = mode => {
       const path = this.selectedValue;
       if (!path) return;
-      this.fileShownFor = this.fileShownFor === path ? null : path;
+      this.diffLeftFor = mode === "diff" ? null : path;
+      const source = mode === "source";
+      // Choosing Preview or Source changes the remembered choice, as the two-way toggle does.
+      if (mode !== "diff" && (fileKind(path) === "markdown" || path.toLowerCase().endsWith(".svg")) && source !== this.showSource) {
+        this.showSource = source;
+        this.preferences.set("showSource", source);
+      }
       void this.loadFile(path);
     };
     pane.onToggleSource = () => { this.showSource = !this.showSource; this.preferences.set("showSource", this.showSource); };
@@ -335,20 +341,20 @@ export class TvCodeElement extends HTMLElement {
       void this.loadFile(path);
     }
     if (!path) this.maybeOpenReadme();
-    else if (this.frameValue && openEntry?.type === "file" && !this.pane?.isDeleted) void this.followFrame(path);
+    else if (this.diffValue && openEntry?.type === "file" && !this.pane?.isDeleted) void this.followDiff(path);
   }
 
-  /** Reopen the file when the address of its frame changes with the tree. */
-  private async followFrame(path: string): Promise<void> {
+  /** Reopen the file when its diff element changes with the tree. */
+  private async followDiff(path: string): Promise<void> {
     const epoch = this.readEpoch;
-    const address = await this.frameAddress(path);
+    const element = await this.diffFor(path);
     if (epoch !== this.readEpoch || this.selectedValue !== path || !this.pane) return;
-    if (address !== this.pane.frameAddress) void this.loadFile(path);
+    if (element !== this.pane.diffElement) void this.loadFile(path);
   }
 
-  private async frameAddress(path: string): Promise<string | null> {
-    try { return (await this.frameValue?.(path)) || null; }
-    catch (error) { console.error("tv-code frame failed", error); return null; }
+  private async diffFor(path: string): Promise<HTMLElement | null> {
+    try { return (await this.diffValue?.(path)) || null; }
+    catch (error) { console.error("tv-code diff failed", error); return null; }
   }
 
   private maybeOpenReadme(): void {
@@ -372,7 +378,7 @@ export class TvCodeElement extends HTMLElement {
     // Closing the file must outlast later connection listings. A new input
     // resets this flag and may make the README rule apply again.
     if (!path) this.autoOpened = true;
-    if (path !== this.selectedValue) { this.pendingHeading = null; this.fileShownFor = null; }
+    if (path !== this.selectedValue) { this.pendingHeading = null; this.diffLeftFor = null; }
     if (path !== this.selectedValue && this.singleFile && this.activeInput === "connection" && !this.connectionValue?.list) {
       this.model.replace(path ? [{ path, type: "file" }] : []);
     }
@@ -425,14 +431,14 @@ export class TvCodeElement extends HTMLElement {
 
   private async loadFile(path: string, retry = false, showAnyway = false): Promise<void> {
     const epoch = ++this.readEpoch;
-    if (this.frameValue || this.pane?.frameAddress) {
-      // A framed file is not read; the page in the frame shows it.
-      const address = await this.frameAddress(path);
+    if (this.diffValue || this.pane?.diffElement) {
+      // A file shown as its diff is not read; the page keeps the diff current.
+      const element = await this.diffFor(path);
       if (epoch !== this.readEpoch || this.selectedValue !== path) return;
-      const fileShown = this.fileShownFor === path;
-      this.pane?.setFrame(address, fileShown);
-      this.loader.setOpenFile((address && !fileShown) || fileKind(path) === "binary" ? null : path);
-      if (address && !fileShown) return;
+      const shown = element !== null && this.diffLeftFor !== path;
+      this.pane?.setDiff(element, shown);
+      this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
+      if (shown) return;
     }
     let result: DecodedRead | null = null;
     const entry = this.model.get(path);

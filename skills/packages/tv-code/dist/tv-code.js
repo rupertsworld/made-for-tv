@@ -11301,6 +11301,7 @@ const icons = {
   fileLock: icon('<path d="M9.5 1.75H4a.75.75 0 0 0-.75.75v11c0 .41.34.75.75.75h8c.41 0 .75-.34.75-.75V5L9.5 1.75Z"/><path d="M9.5 1.75V5h3.25M6 9V8a2 2 0 0 1 4 0v1m-4.5 0h5v3h-5z"/>'),
   preview: icon('<path d="M1.5 8s2.5-4 6.5-4 6.5 4 6.5 4-2.5 4-6.5 4-6.5-4-6.5-4Z"/><circle cx="8" cy="8" r="2"/>'),
   source: icon('<path d="m5.75 4.5-3.5 3.5 3.5 3.5m4.5-7L13.75 8l-3.5 3.5M9 3 7 13"/>'),
+  diff: icon('<circle cx="3.5" cy="4" r="1.5"/><path d="M3.5 5.5v3.6L7 12.6M4 13h3v-3"/><circle cx="12.5" cy="12" r="1.5"/><path d="M12.5 10.5V6.9L9 3.4M12 3H9v3"/>'),
   wrap: icon('<path d="M2 3.5h12M2 7.5h9.5a2.5 2.5 0 0 1 0 5H8m1.75-1.75L8 12.5l1.75 1.75M2 12.5h3"/>')
 };
 function iconForFile(path) {
@@ -21413,8 +21414,9 @@ class Pane {
     __publicField(this, "wrapped", false);
     __publicField(this, "source", false);
     __publicField(this, "singleFile", false);
-    /** The page address offered for the current file, and whether the reader chose the file instead. */
-    __publicField(this, "frame", null);
+    /** The diff element offered for the current file, and whether it is the view shown. */
+    __publicField(this, "diff", null);
+    __publicField(this, "countsObserver", null);
     __publicField(this, "onRetry");
     __publicField(this, "onReveal");
     __publicField(this, "onLinesChange");
@@ -21423,7 +21425,7 @@ class Pane {
     __publicField(this, "onToggleWrap");
     __publicField(this, "onToggleSource");
     __publicField(this, "onFind");
-    __publicField(this, "onToggleFile");
+    __publicField(this, "onViewMode");
     __publicField(this, "resolveImage");
     __publicField(this, "hasImage");
     this.openSidebarButton = openSidebarButton;
@@ -21440,10 +21442,10 @@ class Pane {
   hasBodyFor(path) {
     return this.contentPath === path && this.result !== null;
   }
-  /** The page address offered for the current file, or null. */
-  get frameAddress() {
+  /** The diff element offered for the current file, or null. */
+  get diffElement() {
     var _a2;
-    return ((_a2 = this.frame) == null ? void 0 : _a2.address) ?? null;
+    return ((_a2 = this.diff) == null ? void 0 : _a2.element) ?? null;
   }
   /** Whether the current path has been marked as removed. */
   get isDeleted() {
@@ -21507,12 +21509,21 @@ class Pane {
     this.renderActions();
   }
   /**
-   * Offer a page in place of the current file. Unless the reader chose the
-   * file, the page fills the content area until a file body is shown.
+   * Offer a diff of the current file as a view mode. When it is the view
+   * shown, the element fills the content area until a file body is shown.
    */
-  setFrame(address, fileShown) {
-    this.frame = address ? { address, fileShown } : null;
-    if (address && !fileShown) {
+  setDiff(element2, shown) {
+    var _a2, _b2, _c2;
+    if (element2 !== ((_a2 = this.diff) == null ? void 0 : _a2.element)) {
+      (_b2 = this.countsObserver) == null ? void 0 : _b2.disconnect();
+      this.countsObserver = null;
+      if (element2) {
+        this.countsObserver = new MutationObserver(() => this.renderPath());
+        this.countsObserver.observe(element2, { attributeFilter: ["data-additions", "data-deletions"] });
+      }
+    }
+    this.diff = element2 ? { element: element2, shown } : null;
+    if (element2 && shown) {
       if (this.fadeTimer) clearTimeout(this.fadeTimer);
       this.fadeTimer = null;
       this.progress.classList.remove("cv-pane-progress-active");
@@ -21522,12 +21533,11 @@ class Pane {
       this.result = null;
       this.deleted = false;
       this.contentPath = this.currentPath;
-      this.renderPath();
-      const current = this.content.firstElementChild;
-      if (!(current instanceof HTMLIFrameElement && current.getAttribute("src") === address)) {
-        this.content.replaceChildren(h$1("iframe", { className: "cv-pane-frame", src: address, title: this.currentPath ?? "" }));
+      if (((_c2 = this.content.firstElementChild) == null ? void 0 : _c2.firstElementChild) !== element2) {
+        this.content.replaceChildren(h$1("div", { className: "cv-pane-diff" }, element2));
       }
     }
+    this.renderPath();
     this.renderActions();
   }
   /** Show an immediate new header and keep old content during a pending read. */
@@ -21538,7 +21548,7 @@ class Pane {
     this.currentPath = path;
     this.entry = null;
     this.result = null;
-    this.frame = null;
+    this.clearDiff();
     this.deleted = false;
     this.renderPath();
     this.renderActions();
@@ -21676,7 +21686,7 @@ class Pane {
     this.fadeTimer = null;
     this.currentPath = null;
     this.entry = null;
-    this.frame = null;
+    this.clearDiff();
     this.deleted = false;
     this.contentPath = null;
     this.result = null;
@@ -21701,6 +21711,12 @@ class Pane {
       )
     ));
   }
+  clearDiff() {
+    var _a2;
+    (_a2 = this.countsObserver) == null ? void 0 : _a2.disconnect();
+    this.countsObserver = null;
+    this.diff = null;
+  }
   replaceBody(element2, body2 = null) {
     if (this.body !== body2) this.clearBody();
     this.body = body2;
@@ -21715,11 +21731,12 @@ class Pane {
     this.codeLanguageId = null;
   }
   renderPath() {
+    var _a2;
     const path = this.currentPath;
     const segments = path ? path.split("/") : [];
     const crumb = (name, folder2) => this.singleFile ? h$1("span", { className: "cv-crumb", text: name }) : h$1("button", { className: "cv-crumb cv-button", type: "button", text: name, onclick: () => {
-      var _a2;
-      return (_a2 = this.onReveal) == null ? void 0 : _a2.call(this, folder2);
+      var _a3;
+      return (_a3 = this.onReveal) == null ? void 0 : _a3.call(this, folder2);
     } });
     const parts = [];
     const separate = (node) => parts.push(...parts.length ? [h$1("span", { className: "cv-path-separator", text: "/" })] : [], node);
@@ -21729,11 +21746,20 @@ class Pane {
       separate(crumb(segment, folder));
     }
     if (path) separate(h$1("strong", { className: "cv-path-file", text: segments.at(-1) ?? "" }));
+    const counts = (_a2 = this.diff) == null ? void 0 : _a2.element.dataset;
+    if ((counts == null ? void 0 : counts.additions) !== void 0 && counts.deletions !== void 0) {
+      parts.push(h$1(
+        "span",
+        { className: "cv-diff-counts" },
+        h$1("span", { className: "cv-diff-additions", text: `+${counts.additions}` }),
+        h$1("span", { className: "cv-diff-deletions", text: `−${counts.deletions}` })
+      ));
+    }
     if (this.deleted) parts.push(h$1("span", { className: "cv-deleted", text: "Deleted" }));
     this.pathArea.replaceChildren(...parts);
   }
   renderActions() {
-    var _a2;
+    var _a2, _b2;
     const focusedAction = this.actions.contains(document.activeElement) ? document.activeElement.getAttribute("aria-label") : null;
     const path = this.currentPath;
     if (!path) {
@@ -21741,19 +21767,25 @@ class Pane {
       return;
     }
     const kind = fileKind(path);
-    const framed = this.frame !== null && !this.frame.fileShown;
-    const sourceToggle = !framed && (kind === "markdown" || path.toLowerCase().endsWith(".svg"));
-    const isCode = !framed && (kind === "text" || this.source && sourceToggle);
+    const sourceToggle = kind === "markdown" || path.toLowerCase().endsWith(".svg");
+    const diffShown = ((_a2 = this.diff) == null ? void 0 : _a2.shown) ?? false;
+    const isCode = !diffShown && (kind === "text" || this.source && sourceToggle);
     const actions = [];
-    if (this.frame) {
-      const button = this.action("Show file", icons.file, () => {
-        var _a3;
-        return (_a3 = this.onToggleFile) == null ? void 0 : _a3.call(this);
+    if (this.diff) {
+      const views = [];
+      if (sourceToggle || kind === "image") views.push(["Preview", icons.preview, "preview", !diffShown && !(sourceToggle && this.source)]);
+      if (sourceToggle || kind !== "image") views.push(["Source", icons.source, "source", !diffShown && (!sourceToggle || this.source)]);
+      views.push(["Diff", icons.diff, "diff", diffShown]);
+      const buttons = views.map(([label, icon2, mode, pressed]) => {
+        const button = this.action(label, icon2, () => {
+          var _a3;
+          return (_a3 = this.onViewMode) == null ? void 0 : _a3.call(this, mode);
+        });
+        button.setAttribute("aria-pressed", String(pressed));
+        return button;
       });
-      button.setAttribute("aria-pressed", String(this.frame.fileShown));
-      actions.push(button);
-    }
-    if (sourceToggle) {
+      actions.push(h$1("div", { className: "cv-view-toggle", role: "group", "aria-label": "View mode" }, ...buttons));
+    } else if (sourceToggle) {
       const preview = this.action("Preview", icons.preview, () => {
         var _a3;
         if (this.source) (_a3 = this.onToggleSource) == null ? void 0 : _a3.call(this);
@@ -21776,7 +21808,7 @@ class Pane {
     }
     this.actions.replaceChildren(...actions);
     if (focusedAction) {
-      (_a2 = [...this.actions.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === focusedAction)) == null ? void 0 : _a2.focus({ preventScroll: true });
+      (_b2 = [...this.actions.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === focusedAction)) == null ? void 0 : _b2.focus({ preventScroll: true });
     }
   }
   action(label, icon2, click) {
@@ -22925,9 +22957,9 @@ class TvCodeElement extends HTMLElement {
     __publicField(this, "warming", null);
     __publicField(this, "warmed", false);
     __publicField(this, "pendingHeading", null);
-    __publicField(this, "frameValue", null);
-    /** The open file whose contents the reader chose over its frame. */
-    __publicField(this, "fileShownFor", null);
+    __publicField(this, "diffValue", null);
+    /** The open file for which the reader chose another view than its diff. */
+    __publicField(this, "diffLeftFor", null);
     __publicField(this, "onDocumentReady", () => {
       if (this.activeInput === "tags") this.applyInput();
     });
@@ -22999,12 +23031,12 @@ class TvCodeElement extends HTMLElement {
     this.filesValue = null;
     this.applyInput();
   }
-  /** A function giving the address of a page to show in place of a file, or nothing to show the file. */
-  get frame() {
-    return this.frameValue;
+  /** A function giving an element that shows how a file changed, or nothing for an unchanged file. */
+  get diff() {
+    return this.diffValue;
   }
-  set frame(value) {
-    this.frameValue = value ?? null;
+  set diff(value) {
+    this.diffValue = value ?? null;
     if (this.selectedValue) void this.loadFile(this.selectedValue);
   }
   /** The currently open file path, or null when no file is open. */
@@ -23092,10 +23124,15 @@ class TvCodeElement extends HTMLElement {
     };
     pane.onToggleWrap = () => this.toggleWrap();
     pane.onFind = () => this.openFinder();
-    pane.onToggleFile = () => {
+    pane.onViewMode = (mode) => {
       const path = this.selectedValue;
       if (!path) return;
-      this.fileShownFor = this.fileShownFor === path ? null : path;
+      this.diffLeftFor = mode === "diff" ? null : path;
+      const source = mode === "source";
+      if (mode !== "diff" && (fileKind(path) === "markdown" || path.toLowerCase().endsWith(".svg")) && source !== this.showSource) {
+        this.showSource = source;
+        this.preferences.set("showSource", source);
+      }
       void this.loadFile(path);
     };
     pane.onToggleSource = () => {
@@ -23292,21 +23329,21 @@ class TvCodeElement extends HTMLElement {
       void this.loadFile(path);
     }
     if (!path) this.maybeOpenReadme();
-    else if (this.frameValue && (openEntry == null ? void 0 : openEntry.type) === "file" && !((_h = this.pane) == null ? void 0 : _h.isDeleted)) void this.followFrame(path);
+    else if (this.diffValue && (openEntry == null ? void 0 : openEntry.type) === "file" && !((_h = this.pane) == null ? void 0 : _h.isDeleted)) void this.followDiff(path);
   }
-  /** Reopen the file when the address of its frame changes with the tree. */
-  async followFrame(path) {
+  /** Reopen the file when its diff element changes with the tree. */
+  async followDiff(path) {
     const epoch = this.readEpoch;
-    const address = await this.frameAddress(path);
+    const element2 = await this.diffFor(path);
     if (epoch !== this.readEpoch || this.selectedValue !== path || !this.pane) return;
-    if (address !== this.pane.frameAddress) void this.loadFile(path);
+    if (element2 !== this.pane.diffElement) void this.loadFile(path);
   }
-  async frameAddress(path) {
+  async diffFor(path) {
     var _a2;
     try {
-      return await ((_a2 = this.frameValue) == null ? void 0 : _a2.call(this, path)) || null;
+      return await ((_a2 = this.diffValue) == null ? void 0 : _a2.call(this, path)) || null;
     } catch (error) {
-      console.error("tv-code frame failed", error);
+      console.error("tv-code diff failed", error);
       return null;
     }
   }
@@ -23334,7 +23371,7 @@ class TvCodeElement extends HTMLElement {
     if (!path) this.autoOpened = true;
     if (path !== this.selectedValue) {
       this.pendingHeading = null;
-      this.fileShownFor = null;
+      this.diffLeftFor = null;
     }
     if (path !== this.selectedValue && this.singleFile && this.activeInput === "connection" && !((_a2 = this.connectionValue) == null ? void 0 : _a2.list)) {
       this.model.replace(path ? [{ path, type: "file" }] : []);
@@ -23394,13 +23431,13 @@ class TvCodeElement extends HTMLElement {
   async loadFile(path, retry = false, showAnyway = false) {
     var _a2, _b2, _c2, _d2, _e2, _f, _g, _h, _i;
     const epoch = ++this.readEpoch;
-    if (this.frameValue || ((_a2 = this.pane) == null ? void 0 : _a2.frameAddress)) {
-      const address = await this.frameAddress(path);
+    if (this.diffValue || ((_a2 = this.pane) == null ? void 0 : _a2.diffElement)) {
+      const element2 = await this.diffFor(path);
       if (epoch !== this.readEpoch || this.selectedValue !== path) return;
-      const fileShown = this.fileShownFor === path;
-      (_b2 = this.pane) == null ? void 0 : _b2.setFrame(address, fileShown);
-      this.loader.setOpenFile(address && !fileShown || fileKind(path) === "binary" ? null : path);
-      if (address && !fileShown) return;
+      const shown = element2 !== null && this.diffLeftFor !== path;
+      (_b2 = this.pane) == null ? void 0 : _b2.setDiff(element2, shown);
+      this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
+      if (shown) return;
     }
     let result = null;
     const entry = this.model.get(path);

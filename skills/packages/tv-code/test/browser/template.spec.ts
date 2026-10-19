@@ -82,7 +82,7 @@ for (const open of ['code', 'markdown', 'image'] as const) {
   }
 }
 
-test('a status letter and a framed file header match their templates', async ({ page }) => {
+test('a status letter and the header of a changed file match their templates', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/packages/tv-code/test/browser/fixture.html');
   const rows = [
@@ -91,17 +91,22 @@ test('a status letter and a framed file header match their templates', async ({ 
   ] as const;
   const reference = {
     rows: sidebar.render({ label: 'Files', rows, selected: 'new.ts' }),
-    frame: header.render({ path: 'new.ts', view: 'code', frame: 'frame' }),
-    file: header.render({ path: 'new.ts', view: 'code', frame: 'file' }),
+    diff: header.render({ path: 'new.ts', view: 'code', diff: { mode: 'diff', additions: 1, deletions: 0 } }),
+    source: header.render({ path: 'new.ts', view: 'code', diff: { mode: 'source', additions: 1, deletions: 0 } }),
+    markdown: header.render({ path: 'README.md', view: 'markdown', diff: { mode: 'diff' } }),
   };
   await page.locator('#host').evaluate(host => {
     host.innerHTML = '<tv-code></tv-code>';
     const viewer = host.firstElementChild as any;
-    viewer.frame = (path: string) => path === 'new.ts' ? 'data:text/html,diff' : null;
-    viewer.files = [{ path: 'b.ts', content: 'b' }, { path: 'new.ts', content: 'new', status: 'added' }];
+    const element = Object.assign(document.createElement('iframe'), { src: 'data:text/html,diff' });
+    element.dataset.additions = '1';
+    element.dataset.deletions = '0';
+    const readme = Object.assign(document.createElement('iframe'), { src: 'data:text/html,readme' });
+    viewer.diff = (path: string) => path === 'new.ts' ? element : path === 'README.md' ? readme : null;
+    viewer.files = [{ path: 'b.ts', content: 'b' }, { path: 'new.ts', content: 'new', status: 'added' }, { path: 'README.md', content: '# Readme', status: 'modified' }];
   });
   await page.locator('.cv-row[data-path="new.ts"]').click();
-  await expect(page.locator('.cv-pane-frame')).toBeVisible();
+  await expect(page.locator('.cv-pane-diff')).toBeVisible();
   const shapes = async (selector: string, html: string) => page.evaluate(({ selector, html }) => {
     const shape = (element: Element): unknown => ({
       tag: element.localName,
@@ -116,13 +121,17 @@ test('a status letter and a framed file header match their templates', async ({ 
       reference: [...template.content.querySelectorAll(selector)].map(shape),
     };
   }, { selector, html });
-  const tree = await shapes('.cv-row', reference.rows);
+  const tree = await shapes('.cv-row[data-path="b.ts"], .cv-row[data-path="new.ts"]', reference.rows);
   expect(tree.actual.length).toBe(2);
   expect(tree.actual).toEqual(tree.reference);
-  const framed = await shapes('.cv-pane-header', reference.frame);
-  expect(framed.actual).toEqual(framed.reference);
-  await page.getByRole('button', { name: 'Show file' }).click();
+  const diff = await shapes('.cv-pane-header', reference.diff);
+  expect(diff.actual).toEqual(diff.reference);
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
   await expect(page.locator('.cv-code-text')).toHaveText('new');
-  const file = await shapes('.cv-pane-header', reference.file);
-  expect(file.actual).toEqual(file.reference);
+  const source = await shapes('.cv-pane-header', reference.source);
+  expect(source.actual).toEqual(source.reference);
+  await page.locator('.cv-row[data-path="README.md"]').click();
+  await expect(page.locator('.cv-pane-diff')).toBeVisible();
+  const markdown = await shapes('.cv-pane-header', reference.markdown);
+  expect(markdown.actual).toEqual(markdown.reference);
 });
