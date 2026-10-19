@@ -11,6 +11,7 @@ type Row = {
   expanded?: boolean;
   dimmed?: boolean;
   icon?: Parameters<typeof icons.render>[0]['name'];
+  status?: 'added' | 'modified' | 'removed';
 };
 
 type Args = { label: string; rows: readonly Row[]; selected: string; closed?: boolean };
@@ -140,6 +141,11 @@ tv-code .cv-caret-open .cv-icon { transform: rotate(90deg); }
 tv-code .cv-caret-spinning .cv-icon { animation: cv-spin 900ms linear infinite; }
 tv-code .cv-row-icon { display: flex; flex: 0 0 16px; color: var(--_text-muted); }
 tv-code .cv-row-name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* A change letter, after the name at the end of the row. */
+tv-code .cv-row-status { flex: none; margin-left: auto; padding-left: 4px; font-size: 11px; font-weight: 600; }
+tv-code .cv-row-status[data-status="added"] { color: var(--_added); }
+tv-code .cv-row-status[data-status="modified"] { color: var(--_syntax-number); }
+tv-code .cv-row-status[data-status="removed"] { color: var(--_removed); }
 tv-code .cv-tree-empty,
 tv-code .cv-tree-failure { padding: 8px; color: var(--_text-muted); }
 tv-code .cv-tree-failure { padding-left: calc(8px + var(--cv-depth) * 12px); display: flex; gap: 6px; align-items: center; }
@@ -176,11 +182,19 @@ function escapeHtml(value: string): string {
     .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
 
+const statusLetters = { added: ['A', 'Added'], modified: ['M', 'Modified'], removed: ['D', 'Removed'] } as const;
+
+function renderStatus(status: Row['status']): string {
+  if (!status) return '';
+  const [letter, title] = statusLetters[status];
+  return `<span class="cv-row-status" data-status="${status}" title="${title}">${letter}</span>`;
+}
+
 function renderRow(row: Row, selected: string, tabPath: string): string {
   const folder = row.kind === 'folder';
   const icon = row.icon ?? (folder ? row.expanded ? 'folderOpen' : 'folder' : 'file');
   const path = escapeHtml(row.path);
-  return `<div class="cv-row${folder ? ' cv-row-folder' : row.path === selected ? ' cv-row-selected' : ''}${row.dimmed ? ' cv-row-dimmed' : ''}" role="treeitem" tabindex="${row.path === tabPath ? 0 : -1}" data-path="${path}" data-level="${row.level}" title="${path}" aria-level="${row.level}" ${folder ? `aria-expanded="${!!row.expanded}"` : `aria-selected="${row.path === selected}"`} style="--cv-depth: ${row.level - 1};"><span class="cv-row-guides" aria-hidden="true"></span><span class="cv-caret${folder && row.expanded ? ' cv-caret-open' : ''}">${folder ? icons.render({ name: 'caret' }) : ''}</span><span class="cv-row-icon" data-icon="${icon}">${icons.render({ name: icon })}</span><span class="cv-row-name">${escapeHtml(row.name)}</span></div>`;
+  return `<div class="cv-row${folder ? ' cv-row-folder' : row.path === selected ? ' cv-row-selected' : ''}${row.dimmed ? ' cv-row-dimmed' : ''}" role="treeitem" tabindex="${row.path === tabPath ? 0 : -1}" data-path="${path}" data-level="${row.level}" title="${path}" aria-level="${row.level}" ${folder ? `aria-expanded="${!!row.expanded}"` : `aria-selected="${row.path === selected}"`} style="--cv-depth: ${row.level - 1};"><span class="cv-row-guides" aria-hidden="true"></span><span class="cv-caret${folder && row.expanded ? ' cv-caret-open' : ''}">${folder ? icons.render({ name: 'caret' }) : ''}</span><span class="cv-row-icon" data-icon="${icon}">${icons.render({ name: icon })}</span><span class="cv-row-name">${escapeHtml(row.name)}</span>${renderStatus(row.status)}</div>`;
 }
 
 function render({ label, rows, selected, closed = false }: Args): string {

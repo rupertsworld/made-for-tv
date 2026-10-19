@@ -200,6 +200,11 @@ tv-code .cv-caret-open .cv-icon { transform: rotate(90deg); }
 tv-code .cv-caret-spinning .cv-icon { animation: cv-spin 900ms linear infinite; }
 tv-code .cv-row-icon { display: flex; flex: 0 0 16px; color: var(--_text-muted); }
 tv-code .cv-row-name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* A change letter, after the name at the end of the row. */
+tv-code .cv-row-status { flex: none; margin-left: auto; padding-left: 4px; font-size: 11px; font-weight: 600; }
+tv-code .cv-row-status[data-status="added"] { color: var(--_added); }
+tv-code .cv-row-status[data-status="modified"] { color: var(--_syntax-number); }
+tv-code .cv-row-status[data-status="removed"] { color: var(--_removed); }
 tv-code .cv-tree-empty,
 tv-code .cv-tree-failure { padding: 8px; color: var(--_text-muted); }
 tv-code .cv-tree-failure { padding-left: calc(8px + var(--cv-depth) * 12px); display: flex; gap: 6px; align-items: center; }
@@ -259,6 +264,8 @@ tv-code .cv-pane-progress-active::before { content: ""; display: block; width: 3
 tv-code .cv-pane-notice:empty { display: none; }
 tv-code .cv-pane-notice { padding: 8px 12px; border-bottom: 1px solid var(--_border); }
 tv-code .cv-pane-content { flex: 1; min-height: 0; overflow: auto; }
+/* A page shown in place of the file fills the content area. */
+tv-code .cv-pane-frame { display: block; width: 100%; height: 100%; border: 0; }
 tv-code .cv-pane-faded { opacity: .65; }
 tv-code .cv-pane-empty { display: grid; place-items: center; height: 100%; color: var(--_text-muted); }
 tv-code .cv-failure { display: flex; align-items: center; gap: 8px; color: var(--_text-muted); padding: 12px; }

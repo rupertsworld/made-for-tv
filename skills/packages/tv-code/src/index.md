@@ -69,7 +69,7 @@ viewer.files = {
 };
 ```
 
-An array entry is `{ path, type, content, src, language, size, modified, dimmed }`. Only `path` is required. Set `type` to `"folder"` for an empty folder or to set its `dimmed` value; otherwise folders are implied by file paths. Assign a new value to update the view; changing the old one in place does nothing.
+An array entry is `{ path, type, content, src, language, size, modified, dimmed, status }`. Only `path` is required. Set `type` to `"folder"` for an empty folder or to set its `dimmed` value; otherwise folders are implied by file paths. Assign a new value to update the view; changing the old one in place does nothing.
 
 ### Connect a service
 
@@ -84,7 +84,7 @@ viewer.connection = {
 };
 ```
 
-- `list(path)` returns entries with `name` (or a full `path`) and `type` (`"file"`, or `"folder"`, `"dir"` or `"directory"`), plus `size` and `modified` when the service provides them. A service that can list everything at once may return the whole subtree with full paths from `list("")`; the element then makes no further `list` calls.
+- `list(path)` returns entries with `name` (or a full `path`) and `type` (`"file"`, or `"folder"`, `"dir"` or `"directory"`), plus `size` and `modified` when the service provides them, and `status` when you compare versions (see below). A service that can list everything at once may return the whole subtree with full paths from `list("")`; the element then makes no further `list` calls.
 - `read(path)` returns a string, a `Response`, a `Blob` or bytes. Returning the `Response` lets the element skip files over 2 MB and show images without more code.
 - Throw or reject with a clear message when something fails; the reader sees it with a Retry button.
 - Encode each path segment when building a URL: `path.split("/").map(encodeURIComponent).join("/")`.
@@ -111,6 +111,16 @@ When the files can change while the page is open, keep the view current using th
 The open file updates without moving the reader: the line at the top stays at the top, and changed lines are marked briefly. A deleted file is marked `Deleted` and keeps its last content.
 
 If the environment documents no way to learn about changes, the view shows the files as they were when loaded. Do not probe for undocumented mechanisms.
+
+## Optional: show changes
+
+To show how the files differ from another version, such as another branch, give changed entries a `status` of `"added"`, `"modified"` or `"removed"` in `files` or in `list` results. The tree shows `A`, `M` or `D` after the name. Include removed files in the listing so the reader can open them, and read them from the other version.
+
+To show a comparison instead of a changed file, assign `frame`: a function from a path to the address of a page, such as a diff view, or `null` to show the file as usual. The pane shows that page in an iframe; the reader's **Show file** button switches to the file and back. The element calls `frame` again when the tree changes, so it follows a status that changes on `refresh`.
+
+```js
+viewer.frame = path => changes.has(path) ? diffPageUrl(path) : null;
+```
 
 ## Optional: share the open file in the address
 
@@ -141,6 +151,8 @@ viewer.addEventListener("select", ({ detail }) => {
 | `dim` | attribute | Name patterns shown dimmed, separated by spaces or commas, with `*` as a wildcard. Default: `.* node_modules dist build out coverage target __pycache__ .venv venv vendor`. Add your own build folders. |
 | `files` | property | All files at once. |
 | `connection` | property | `{ list?, read }` functions for files on demand. Omit `list` to show the file named by `selected`. |
+| `frame` | property | `path => address \| null`, or a promise of one. An address is shown in an iframe in place of that file, with a Show file toggle. |
+| `status` | entry field | `"added"`, `"modified"` or `"removed"` in `files` and `list` entries, shown as `A`, `M` or `D` in the tree. |
 | `refresh(path?)` | method | Fetch through the connection again, for one changed path or for everything. |
 | `select` | event | The reader opened a file or changed the line selection. `detail` is `{ path, lines }`. Not sent when your script sets `selected` or `lines`. |
 | `linkclick` | event | A link was clicked in rendered Markdown. Call `preventDefault()` to handle it yourself; otherwise relative file links open in the viewer, heading links scroll within it, and external links open in a new tab. The viewer leaves the page address unchanged. |

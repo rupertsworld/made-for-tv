@@ -10,8 +10,9 @@ const widthMin = 160;
 const widthMax = 480;
 const widthDefault = 260;
 const snapDistance = 80;
+const statusLetters = { added: ["A", "Added"], modified: ["M", "Modified"], removed: ["D", "Removed"] } as const;
 
-interface RowParts { row: HTMLDivElement; caret: HTMLSpanElement; icon: HTMLSpanElement; name: HTMLSpanElement; }
+interface RowParts { row: HTMLDivElement; caret: HTMLSpanElement; icon: HTMLSpanElement; name: HTMLSpanElement; status?: HTMLSpanElement; }
 
 /** A light-DOM sidebar whose rows retain identity across tree redraws. */
 export class Sidebar {
@@ -168,6 +169,7 @@ export class Sidebar {
       row.classList.toggle("cv-row-folder", node.type === "folder");
       row.style.setProperty("--cv-depth", String(level - 1));
       if (name.textContent !== node.name) name.textContent = node.name;
+      this.setRowStatus(parts, node.status);
       if (node.type === "folder") {
         row.setAttribute("aria-expanded", String(this.expanded.has(node.path)));
         row.removeAttribute("aria-selected");
@@ -265,6 +267,17 @@ export class Sidebar {
     if (host.dataset.icon === name) return;
     host.dataset.icon = name;
     host.replaceChildren(this.iconTemplates[name].cloneNode(true));
+  }
+
+  /** The change letter after the name, present only for an entry with a status. */
+  private setRowStatus(parts: RowParts, status: TreeNode["status"]): void {
+    if (!status) { parts.status?.remove(); parts.status = undefined; return; }
+    if (parts.status?.dataset.status !== status) {
+      const [letter, title] = statusLetters[status];
+      parts.status?.remove();
+      parts.status = h("span", { className: "cv-row-status", "data-status": status, title, text: letter });
+      parts.row.append(parts.status);
+    }
   }
 
   private rowFor(path: string): RowParts {

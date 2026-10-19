@@ -30,6 +30,7 @@ Every input describes files and folders as entries. An entry is an object with t
 | `language` | string                 | Optional language of a file, as a language name or alias the highlighter knows, such as `ts` or `python`. Overrides detection from the file name. |
 | `content`  | string                 | In the `files` property only: the text of the file.                                                                                               |
 | `src`      | string                 | In the `files` property and child tags only: an address from which the browser can load the file as an image.                                    |
+| `status`   | string                 | Optional, in the `files` property and `list` results: how the entry differs from a version it is compared with, `"added"`, `"modified"` or `"removed"`. Shown as a [letter in the tree](#file-tree). Any other value is ignored. |
 
 Folders do not need entries of their own. A file at `src/lib/util.ts` implies the folders `src` and `src/lib`. An entry of type folder is needed only for an empty folder, or to set `dimmed` on a folder.
 
@@ -139,6 +140,7 @@ When the input changes, the element keeps the open file, the line selection and 
 | --------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Property  | `files`           | All files at once, as an array of entries or an object of paths to text. See [The `files` property](#the-files-property).                                                             |
 | Property  | `connection`      | An object with a `read` function and an optional `list` function. See [The `connection` property](#the-connection-property).                                                            |
+| Property  | `frame`           | A function from a file path to the address of a page to show in place of that file, or `null`. See [Pages in place of a file](#pages-in-place-of-a-file).                                |
 | Child     | `<tv-code-file>`, `<tv-code-folder>` | Files and folders written into the page. See [Child tags](#child-tags).                                                                                     |
 | Attribute | `label`           | The name of the root, such as a repository name, shown at the top of the sidebar. Defaults to `Files`.                                                                                  |
 | Attribute | `selected`        | The path of the open file. Reflects the property of the same name. See [Selection](#selection).                                                                                        |
@@ -165,7 +167,7 @@ The element is divided left to right: the sidebar with the file tree, and the fi
 
 ### File tree
 
-- **Rows.** One row per entry: a disclosure caret for folders, an icon for the kind of file, and the name. Rows are indented 12 px per level, with a faint vertical guide line for each level. Names do not wrap; a long name is cut off with an ellipsis, and the full path shows as the row tooltip. Each row carries its path in `data-path`.
+- **Rows.** One row per entry: a disclosure caret for folders, an icon for the kind of file, and the name. Rows are indented 12 px per level, with a faint vertical guide line for each level. Names do not wrap; a long name is cut off with an ellipsis, and the full path shows as the row tooltip. Each row carries its path in `data-path`. An entry with a `status` shows a letter at the end of its row, after the name: `A` for added in the success colour, `M` for modified in the syntax number colour, and `D` for removed in the danger colour, with the full word as its tooltip. The element gives a removed entry no other treatment: it opens and reads like any other. Entries without a status show no letter.
 - **Order.** Folders come before files at each level. Within each group, names are ordered case-insensitively, with numbers in names compared by value (`file2` before `file10`).
 - **Folders.** Pressing a folder row, on the caret or the name, opens or closes it. Opening a folder that has not been listed calls `list` on the connection; if the listing takes longer than 200 ms, the caret becomes a small spinner until it arrives. A failed listing shows a row inside the folder with the message and a Retry button. Open folders stay open across refreshes and new input.
 - **Files.** Pressing a file row opens it. The row of the open file is tinted more strongly than the hover tint.
@@ -195,6 +197,7 @@ The header stays at the top of the pane while the content scrolls. It shows:
 - **Actions.** Icon buttons with tooltips and accessible names:
   - **Preview / Source**, for Markdown and SVG files: a two-option toggle that sets the `show-source` attribute.
   - **Wrap lines**, for files shown as code: a toggle that sets the `wrap` attribute. `Alt+Z` does the same.
+  - **Show file**, first, for a file shown as a [page in its place](#pages-in-place-of-a-file): a toggle between that page and the file.
   - **Find file**, always shown, last: opens the [file finder](#file-finder).
 
 The header shows no other details of the file.
@@ -212,6 +215,15 @@ The element decides how to show a file from its name and, when needed, its bytes
 - **Known binary files**, such as fonts, archives, PDF documents, audio, video and executables, are not read. The pane shows the file name, its size and `Binary file not shown`.
 - **Large files**, larger than 2 MB by the `size` of their entry or the `Content-Length` of the response, are not read. The pane shows the size and a `Show anyway` button.
 - **Other files** are read and shown as [code](#code). Text whose first 8,000 bytes contain a zero byte is binary, and is shown as a known binary file is.
+
+### Pages in place of a file
+
+A page can show another page in place of a file, such as a comparison of the file with an earlier version. It assigns `frame`, a function that takes the path of a file and returns the address of the page, or `null` or `undefined` to show the file as usual. It may return a promise. The element calls it when a file is opened and whenever the tree changes, and calls nothing when `frame` is unset.
+
+- When it returns an address, the file pane shows that address in an iframe filling the content area below the header, and the element does not read the file. The header shows the path and **Show file**, unpressed, then Find file; the other actions do not apply.
+- Pressing **Show file** shows the file as usual, with its actions, and pressing it again returns to the page. The choice lasts while the file stays open; opening a file again shows its page.
+- When a change to the tree changes the address for the open file, the pane follows: it loads the new address, or shows the file when there is none. While the address stays the same, the page is not reloaded. The page in the frame keeps itself current; refreshes do not read a file shown as a page.
+- A function that throws or rejects counts as `null`, and the element logs the error.
 
 ### Code
 

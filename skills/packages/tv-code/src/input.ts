@@ -1,6 +1,8 @@
 /** Normalize the three page input forms and decode connection reads at their boundary. */
 import { joinPath, normalizePath } from "./paths";
-import type { EntryInput, ReadResult } from "./types";
+import type { EntryInput, EntryStatus, ReadResult } from "./types";
+
+const statuses: readonly string[] = ["added", "modified", "removed"] satisfies EntryStatus[];
 
 /** An entry after paths, fields and type aliases have been normalized. */
 export interface Entry extends Omit<EntryInput, "path" | "name" | "type"> {
@@ -42,6 +44,7 @@ export function normalizeEntries(entries: EntryInput[], folder = ""): Entry[] {
     if (typeof input.language === "string") entry.language = input.language;
     if (typeof input.content === "string") entry.content = input.content;
     if (typeof input.src === "string") entry.src = input.src;
+    if (statuses.includes(input.status as string)) entry.status = input.status;
     return [entry];
   });
 }

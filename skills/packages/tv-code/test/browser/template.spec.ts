@@ -2,6 +2,8 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import template from '../../../../spec/tv-code/templates/tv-code';
+import header from '../../../../spec/tv-code/templates/header';
+import sidebar from '../../../../spec/tv-code/templates/sidebar';
 import { stylesheet } from '../../../../spec/types';
 import { sampleBodies, sampleInputHtml, sampleRows } from '../../../../storybook/sample-code';
 
@@ -79,3 +81,48 @@ for (const open of ['code', 'markdown', 'image'] as const) {
     });
   }
 }
+
+test('a status letter and a framed file header match their templates', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/packages/tv-code/test/browser/fixture.html');
+  const rows = [
+    { path: 'b.ts', name: 'b.ts', kind: 'file', level: 1, icon: 'fileCode' },
+    { path: 'new.ts', name: 'new.ts', kind: 'file', level: 1, icon: 'fileCode', status: 'added' },
+  ] as const;
+  const reference = {
+    rows: sidebar.render({ label: 'Files', rows, selected: 'new.ts' }),
+    frame: header.render({ path: 'new.ts', view: 'code', frame: 'frame' }),
+    file: header.render({ path: 'new.ts', view: 'code', frame: 'file' }),
+  };
+  await page.locator('#host').evaluate(host => {
+    host.innerHTML = '<tv-code></tv-code>';
+    const viewer = host.firstElementChild as any;
+    viewer.frame = (path: string) => path === 'new.ts' ? 'data:text/html,diff' : null;
+    viewer.files = [{ path: 'b.ts', content: 'b' }, { path: 'new.ts', content: 'new', status: 'added' }];
+  });
+  await page.locator('.cv-row[data-path="new.ts"]').click();
+  await expect(page.locator('.cv-pane-frame')).toBeVisible();
+  const shapes = async (selector: string, html: string) => page.evaluate(({ selector, html }) => {
+    const shape = (element: Element): unknown => ({
+      tag: element.localName,
+      attributes: [...element.attributes].map(attribute => [attribute.name, attribute.value]).sort(),
+      text: [...element.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent).join('').trim(),
+      children: [...element.children].map(shape),
+    });
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    return {
+      actual: [...document.querySelectorAll(`tv-code ${selector}`)].map(shape),
+      reference: [...template.content.querySelectorAll(selector)].map(shape),
+    };
+  }, { selector, html });
+  const tree = await shapes('.cv-row', reference.rows);
+  expect(tree.actual.length).toBe(2);
+  expect(tree.actual).toEqual(tree.reference);
+  const framed = await shapes('.cv-pane-header', reference.frame);
+  expect(framed.actual).toEqual(framed.reference);
+  await page.getByRole('button', { name: 'Show file' }).click();
+  await expect(page.locator('.cv-code-text')).toHaveText('new');
+  const file = await shapes('.cv-pane-header', reference.file);
+  expect(file.actual).toEqual(file.reference);
+});

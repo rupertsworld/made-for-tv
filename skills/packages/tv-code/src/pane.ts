@@ -32,6 +32,8 @@ export class Pane {
   private wrapped = false;
   private source = false;
   private singleFile = false;
+  /** The page address offered for the current file, and whether the reader chose the file instead. */
+  private frame: { address: string; fileShown: boolean } | null = null;
   onRetry?: () => void;
   onReveal?: (path: string) => void;
   onLinesChange?: (lines: LineRange | null) => void;
@@ -40,6 +42,7 @@ export class Pane {
   onToggleWrap?: () => void;
   onToggleSource?: () => void;
   onFind?: () => void;
+  onToggleFile?: () => void;
   resolveImage?: (path: string, force: boolean) => Promise<ImageSource | null>;
   hasImage?: (path: string, signal: AbortSignal) => boolean | Promise<boolean>;
 
@@ -53,6 +56,8 @@ export class Pane {
 
   /** Whether the last successfully displayed body belongs to this path. */
   hasBodyFor(path: string): boolean { return this.contentPath === path && this.result !== null; }
+  /** The page address offered for the current file, or null. */
+  get frameAddress(): string | null { return this.frame?.address ?? null; }
   /** Whether the current path has been marked as removed. */
   get isDeleted(): boolean { return this.deleted; }
   /** Whether a Markdown image depends on a changed file. */
@@ -102,6 +107,32 @@ export class Pane {
   /** Apply the source preference; the owner reloads the active file. */
   setShowSource(value: boolean): void { this.source = value; this.renderActions(); }
 
+  /**
+   * Offer a page in place of the current file. Unless the reader chose the
+   * file, the page fills the content area until a file body is shown.
+   */
+  setFrame(address: string | null, fileShown: boolean): void {
+    this.frame = address ? { address, fileShown } : null;
+    if (address && !fileShown) {
+      if (this.fadeTimer) clearTimeout(this.fadeTimer);
+      this.fadeTimer = null;
+      this.progress.classList.remove("cv-pane-progress-active");
+      this.content.classList.remove("cv-pane-faded");
+      this.notice.replaceChildren();
+      this.clearBody();
+      this.result = null;
+      this.deleted = false;
+      this.contentPath = this.currentPath;
+      this.renderPath();
+      const current = this.content.firstElementChild;
+      // Keep a page that is already shown, with its own state and scroll.
+      if (!(current instanceof HTMLIFrameElement && current.getAttribute("src") === address)) {
+        this.content.replaceChildren(h("iframe", { className: "cv-pane-frame", src: address, title: this.currentPath ?? "" }));
+      }
+    }
+    this.renderActions();
+  }
+
   /** Show an immediate new header and keep old content during a pending read. */
   start(path: string): void {
     this.lineObserver?.disconnect();
@@ -109,6 +140,7 @@ export class Pane {
     this.currentPath = path;
     this.entry = null;
     this.result = null;
+    this.frame = null;
     this.deleted = false;
     this.renderPath();
     this.renderActions();
@@ -231,6 +263,7 @@ export class Pane {
     this.fadeTimer = null;
     this.currentPath = null;
     this.entry = null;
+    this.frame = null;
     this.deleted = false;
     this.contentPath = null;
     this.result = null;
@@ -287,9 +320,15 @@ export class Pane {
     const path = this.currentPath;
     if (!path) { this.actions.replaceChildren(); return; }
     const kind = fileKind(path);
-    const sourceToggle = kind === "markdown" || path.toLowerCase().endsWith(".svg");
-    const isCode = kind === "text" || this.source && sourceToggle;
+    const framed = this.frame !== null && !this.frame.fileShown;
+    const sourceToggle = !framed && (kind === "markdown" || path.toLowerCase().endsWith(".svg"));
+    const isCode = !framed && (kind === "text" || this.source && sourceToggle);
     const actions: HTMLElement[] = [];
+    if (this.frame) {
+      const button = this.action("Show file", icons.file, () => this.onToggleFile?.());
+      button.setAttribute("aria-pressed", String(this.frame.fileShown));
+      actions.push(button);
+    }
     if (sourceToggle) {
       const preview = this.action("Preview", icons.preview, () => { if (this.source) this.onToggleSource?.(); });
       const source = this.action("Source", icons.source, () => { if (!this.source) this.onToggleSource?.(); });

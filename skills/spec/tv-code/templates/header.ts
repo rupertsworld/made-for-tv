@@ -3,7 +3,8 @@ import type { Template } from '../../types';
 import { style as baseStyle } from './base';
 import icons from './icons';
 
-type Args = { path: string; view: 'code' | 'markdown' | 'image'; closed?: boolean };
+/** `frame` is set when a page is offered in place of the file: shown, or set aside for the file. */
+type Args = { path: string; view: 'code' | 'markdown' | 'image'; closed?: boolean; frame?: 'frame' | 'file' };
 const options = {} as const;
 const rules = `tv-code .cv-pane {
   flex: 1;
@@ -35,6 +36,8 @@ tv-code .cv-pane-progress-active::before { content: ""; display: block; width: 3
 tv-code .cv-pane-notice:empty { display: none; }
 tv-code .cv-pane-notice { padding: 8px 12px; border-bottom: 1px solid var(--_border); }
 tv-code .cv-pane-content { flex: 1; min-height: 0; overflow: auto; }
+/* A page shown in place of the file fills the content area. */
+tv-code .cv-pane-frame { display: block; width: 100%; height: 100%; border: 0; }
 tv-code .cv-pane-faded { opacity: .65; }
 tv-code .cv-pane-empty { display: grid; place-items: center; height: 100%; color: var(--_text-muted); }
 tv-code .cv-failure { display: flex; align-items: center; gap: 8px; color: var(--_text-muted); padding: 12px; }
@@ -54,17 +57,18 @@ function escapeHtml(value: string): string {
     .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
 
-function action(name: 'Wrap lines' | 'Preview' | 'Source', icon: 'wrap' | 'preview' | 'source', pressed: boolean): string {
+function action(name: 'Wrap lines' | 'Preview' | 'Source' | 'Show file', icon: 'wrap' | 'preview' | 'source' | 'file', pressed: boolean): string {
   return `<button class="cv-button cv-pane-action" type="button" title="${name}" aria-label="${name}" aria-pressed="${pressed}">${icons.render({ name: icon })}</button>`;
 }
 
-function render({ path, view, closed = false }: Args): string {
+function render({ path, view, closed = false, frame }: Args): string {
   const segments = path.split('/');
   const crumbs = segments.slice(0, -1).map(name => `<button class="cv-crumb cv-button" type="button">${escapeHtml(name)}</button>`);
   crumbs.push(`<strong class="cv-path-file">${escapeHtml(segments.at(-1) ?? '')}</strong>`);
-  const actions = view === 'code'
+  const viewActions = frame === 'frame' ? '' : view === 'code'
     ? action('Wrap lines', 'wrap', false)
     : `<div class="cv-view-toggle" role="group" aria-label="View mode">${action('Preview', 'preview', true)}${action('Source', 'source', false)}</div>`;
+  const actions = (frame ? action('Show file', 'file', frame === 'file') : '') + viewActions;
   return `<header class="cv-pane-header"><button class="cv-button cv-open-sidebar" type="button" aria-label="Open sidebar" title="Open sidebar"${closed ? ' tabindex="0" aria-hidden="false"' : ''}>${icons.render({ name: 'sidebar' })}</button><div class="cv-pane-path">${crumbs.join('<span class="cv-path-separator">/</span>')}</div><div class="cv-pane-actions">${actions}</div><button class="cv-button cv-pane-action cv-find" type="button" title="Find file" aria-label="Find file">${icons.render({ name: 'search' })}</button></header>`;
 }
 

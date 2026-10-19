@@ -26,6 +26,14 @@ describe("paths and input", () => {
     expect(normalizeEntries([{ path: "/x/", type: "unknown", size: 3, ignored: true } as never])).toEqual([{ path: "x", type: "file", size: 3 }]);
   });
 
+  it("keeps a known change status and ignores any other value", () => {
+    const statuses = normalizeEntries([
+      { path: "a", status: "added" }, { path: "b", status: "modified" }, { path: "c", type: "folder", status: "removed" },
+      { path: "d", status: "renamed" as never }, { path: "e" },
+    ]).map(entry => entry.status);
+    expect(statuses).toEqual(["added", "modified", "removed", undefined, undefined]);
+  });
+
   it("reads nested child tags and raw script or text content", () => {
     const host = document.createElement("tv-code");
     host.innerHTML = '<tv-code-folder path="src" dimmed><tv-code-file path="app.ts" language="ts"><script type="text/plain">\n    const x = "<tag>";\n</script></tv-code-file><tv-code-file path="note.txt">\n  Hello\n</tv-code-file></tv-code-folder>';

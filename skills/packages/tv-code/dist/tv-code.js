@@ -55,6 +55,7 @@ function formatLines(lines) {
 function parseLineFragment(fragment) {
   return fragment.startsWith("#L") ? parseLines(fragment.slice(2).replace("-L", "-")) : null;
 }
+const statuses = ["added", "modified", "removed"];
 const maximumBytes = 2 * 1024 * 1024;
 function dedent(value) {
   var _a2, _b2;
@@ -80,6 +81,7 @@ function normalizeEntries(entries2, folder = "") {
     if (typeof input.language === "string") entry.language = input.language;
     if (typeof input.content === "string") entry.content = input.content;
     if (typeof input.src === "string") entry.src = input.src;
+    if (statuses.includes(input.status)) entry.status = input.status;
     return [entry];
   });
 }
@@ -21411,6 +21413,8 @@ class Pane {
     __publicField(this, "wrapped", false);
     __publicField(this, "source", false);
     __publicField(this, "singleFile", false);
+    /** The page address offered for the current file, and whether the reader chose the file instead. */
+    __publicField(this, "frame", null);
     __publicField(this, "onRetry");
     __publicField(this, "onReveal");
     __publicField(this, "onLinesChange");
@@ -21419,6 +21423,7 @@ class Pane {
     __publicField(this, "onToggleWrap");
     __publicField(this, "onToggleSource");
     __publicField(this, "onFind");
+    __publicField(this, "onToggleFile");
     __publicField(this, "resolveImage");
     __publicField(this, "hasImage");
     this.openSidebarButton = openSidebarButton;
@@ -21434,6 +21439,11 @@ class Pane {
   /** Whether the last successfully displayed body belongs to this path. */
   hasBodyFor(path) {
     return this.contentPath === path && this.result !== null;
+  }
+  /** The page address offered for the current file, or null. */
+  get frameAddress() {
+    var _a2;
+    return ((_a2 = this.frame) == null ? void 0 : _a2.address) ?? null;
   }
   /** Whether the current path has been marked as removed. */
   get isDeleted() {
@@ -21496,6 +21506,30 @@ class Pane {
     this.source = value;
     this.renderActions();
   }
+  /**
+   * Offer a page in place of the current file. Unless the reader chose the
+   * file, the page fills the content area until a file body is shown.
+   */
+  setFrame(address, fileShown) {
+    this.frame = address ? { address, fileShown } : null;
+    if (address && !fileShown) {
+      if (this.fadeTimer) clearTimeout(this.fadeTimer);
+      this.fadeTimer = null;
+      this.progress.classList.remove("cv-pane-progress-active");
+      this.content.classList.remove("cv-pane-faded");
+      this.notice.replaceChildren();
+      this.clearBody();
+      this.result = null;
+      this.deleted = false;
+      this.contentPath = this.currentPath;
+      this.renderPath();
+      const current = this.content.firstElementChild;
+      if (!(current instanceof HTMLIFrameElement && current.getAttribute("src") === address)) {
+        this.content.replaceChildren(h$1("iframe", { className: "cv-pane-frame", src: address, title: this.currentPath ?? "" }));
+      }
+    }
+    this.renderActions();
+  }
   /** Show an immediate new header and keep old content during a pending read. */
   start(path) {
     var _a2;
@@ -21504,6 +21538,7 @@ class Pane {
     this.currentPath = path;
     this.entry = null;
     this.result = null;
+    this.frame = null;
     this.deleted = false;
     this.renderPath();
     this.renderActions();
@@ -21641,6 +21676,7 @@ class Pane {
     this.fadeTimer = null;
     this.currentPath = null;
     this.entry = null;
+    this.frame = null;
     this.deleted = false;
     this.contentPath = null;
     this.result = null;
@@ -21705,9 +21741,18 @@ class Pane {
       return;
     }
     const kind = fileKind(path);
-    const sourceToggle = kind === "markdown" || path.toLowerCase().endsWith(".svg");
-    const isCode = kind === "text" || this.source && sourceToggle;
+    const framed = this.frame !== null && !this.frame.fileShown;
+    const sourceToggle = !framed && (kind === "markdown" || path.toLowerCase().endsWith(".svg"));
+    const isCode = !framed && (kind === "text" || this.source && sourceToggle);
     const actions = [];
+    if (this.frame) {
+      const button = this.action("Show file", icons.file, () => {
+        var _a3;
+        return (_a3 = this.onToggleFile) == null ? void 0 : _a3.call(this);
+      });
+      button.setAttribute("aria-pressed", String(this.frame.fileShown));
+      actions.push(button);
+    }
     if (sourceToggle) {
       const preview = this.action("Preview", icons.preview, () => {
         var _a3;
@@ -21773,6 +21818,7 @@ const widthMin = 160;
 const widthMax = 480;
 const widthDefault = 260;
 const snapDistance = 80;
+const statusLetters = { added: ["A", "Added"], modified: ["M", "Modified"], removed: ["D", "Removed"] };
 class Sidebar {
   constructor(host, app, model, loader, onSelect, preferences) {
     __publicField(this, "element", h$1("aside", { className: "cv-sidebar" }));
@@ -22092,6 +22138,7 @@ class Sidebar {
       row.classList.toggle("cv-row-folder", node.type === "folder");
       row.style.setProperty("--cv-depth", String(level - 1));
       if (name.textContent !== node.name) name.textContent = node.name;
+      this.setRowStatus(parts, node.status);
       if (node.type === "folder") {
         row.setAttribute("aria-expanded", String(this.expanded.has(node.path)));
         row.removeAttribute("aria-selected");
@@ -22187,6 +22234,21 @@ class Sidebar {
     if (host.dataset.icon === name) return;
     host.dataset.icon = name;
     host.replaceChildren(this.iconTemplates[name].cloneNode(true));
+  }
+  /** The change letter after the name, present only for an entry with a status. */
+  setRowStatus(parts, status) {
+    var _a2, _b2, _c2;
+    if (!status) {
+      (_a2 = parts.status) == null ? void 0 : _a2.remove();
+      parts.status = void 0;
+      return;
+    }
+    if (((_b2 = parts.status) == null ? void 0 : _b2.dataset.status) !== status) {
+      const [letter, title] = statusLetters[status];
+      (_c2 = parts.status) == null ? void 0 : _c2.remove();
+      parts.status = h$1("span", { className: "cv-row-status", "data-status": status, title, text: letter });
+      parts.row.append(parts.status);
+    }
   }
   rowFor(path) {
     const previous = this.rows.get(path);
@@ -22863,6 +22925,9 @@ class TvCodeElement extends HTMLElement {
     __publicField(this, "warming", null);
     __publicField(this, "warmed", false);
     __publicField(this, "pendingHeading", null);
+    __publicField(this, "frameValue", null);
+    /** The open file whose contents the reader chose over its frame. */
+    __publicField(this, "fileShownFor", null);
     __publicField(this, "onDocumentReady", () => {
       if (this.activeInput === "tags") this.applyInput();
     });
@@ -22933,6 +22998,14 @@ class TvCodeElement extends HTMLElement {
     this.connectionValue = value ?? null;
     this.filesValue = null;
     this.applyInput();
+  }
+  /** A function giving the address of a page to show in place of a file, or nothing to show the file. */
+  get frame() {
+    return this.frameValue;
+  }
+  set frame(value) {
+    this.frameValue = value ?? null;
+    if (this.selectedValue) void this.loadFile(this.selectedValue);
   }
   /** The currently open file path, or null when no file is open. */
   get selected() {
@@ -23019,6 +23092,12 @@ class TvCodeElement extends HTMLElement {
     };
     pane.onToggleWrap = () => this.toggleWrap();
     pane.onFind = () => this.openFinder();
+    pane.onToggleFile = () => {
+      const path = this.selectedValue;
+      if (!path) return;
+      this.fileShownFor = this.fileShownFor === path ? null : path;
+      void this.loadFile(path);
+    };
     pane.onToggleSource = () => {
       this.showSource = !this.showSource;
       this.preferences.set("showSource", this.showSource);
@@ -23193,7 +23272,7 @@ class TvCodeElement extends HTMLElement {
     else this.maybeOpenReadme();
   }
   modelChanged() {
-    var _a2, _b2, _c2, _d2, _e2, _f, _g;
+    var _a2, _b2, _c2, _d2, _e2, _f, _g, _h;
     (_a2 = this.sidebar) == null ? void 0 : _a2.render();
     (_b2 = this.finder) == null ? void 0 : _b2.update();
     this.scheduleWarmup();
@@ -23213,6 +23292,23 @@ class TvCodeElement extends HTMLElement {
       void this.loadFile(path);
     }
     if (!path) this.maybeOpenReadme();
+    else if (this.frameValue && (openEntry == null ? void 0 : openEntry.type) === "file" && !((_h = this.pane) == null ? void 0 : _h.isDeleted)) void this.followFrame(path);
+  }
+  /** Reopen the file when the address of its frame changes with the tree. */
+  async followFrame(path) {
+    const epoch = this.readEpoch;
+    const address = await this.frameAddress(path);
+    if (epoch !== this.readEpoch || this.selectedValue !== path || !this.pane) return;
+    if (address !== this.pane.frameAddress) void this.loadFile(path);
+  }
+  async frameAddress(path) {
+    var _a2;
+    try {
+      return await ((_a2 = this.frameValue) == null ? void 0 : _a2.call(this, path)) || null;
+    } catch (error) {
+      console.error("tv-code frame failed", error);
+      return null;
+    }
   }
   maybeOpenReadme() {
     var _a2;
@@ -23236,7 +23332,10 @@ class TvCodeElement extends HTMLElement {
     var _a2, _b2, _c2, _d2, _e2, _f, _g, _h, _i, _j;
     const path = value ? normalizePath(value) : null;
     if (!path) this.autoOpened = true;
-    if (path !== this.selectedValue) this.pendingHeading = null;
+    if (path !== this.selectedValue) {
+      this.pendingHeading = null;
+      this.fileShownFor = null;
+    }
     if (path !== this.selectedValue && this.singleFile && this.activeInput === "connection" && !((_a2 = this.connectionValue) == null ? void 0 : _a2.list)) {
       this.model.replace(path ? [{ path, type: "file" }] : []);
     }
@@ -23293,13 +23392,21 @@ class TvCodeElement extends HTMLElement {
     this.reflecting = false;
   }
   async loadFile(path, retry = false, showAnyway = false) {
-    var _a2, _b2, _c2, _d2, _e2, _f, _g;
+    var _a2, _b2, _c2, _d2, _e2, _f, _g, _h, _i;
     const epoch = ++this.readEpoch;
+    if (this.frameValue || ((_a2 = this.pane) == null ? void 0 : _a2.frameAddress)) {
+      const address = await this.frameAddress(path);
+      if (epoch !== this.readEpoch || this.selectedValue !== path) return;
+      const fileShown = this.fileShownFor === path;
+      (_b2 = this.pane) == null ? void 0 : _b2.setFrame(address, fileShown);
+      this.loader.setOpenFile(address && !fileShown || fileKind(path) === "binary" ? null : path);
+      if (address && !fileShown) return;
+    }
     let result = null;
     const entry = this.model.get(path);
     const kind = fileKind(path);
     const imagePreview = kind === "image" && !(path.toLowerCase().endsWith(".svg") && this.showSource);
-    if (!entry && ((_a2 = this.model.get(parentPath(path))) == null ? void 0 : _a2.listing) === "listed") result = { kind: "failure", message: "File not found" };
+    if (!entry && ((_c2 = this.model.get(parentPath(path))) == null ? void 0 : _c2.listing) === "listed") result = { kind: "failure", message: "File not found" };
     else if (kind === "binary") result = { kind: "binary" };
     else if (!showAnyway && (entry == null ? void 0 : entry.size) !== void 0 && entry.size > maximumBytes) result = { kind: "large", size: entry.size };
     else if (imagePreview && (entry == null ? void 0 : entry.src)) result = { kind: "binary" };
@@ -23316,14 +23423,14 @@ class TvCodeElement extends HTMLElement {
     }
     if (!result || epoch !== this.readEpoch || this.selectedValue !== path) return;
     if (result.kind === "failure" && result.status === 404) {
-      if (this.selectedWasKnown) (_b2 = this.pane) == null ? void 0 : _b2.markDeleted();
-      else (_c2 = this.pane) == null ? void 0 : _c2.show({ kind: "failure", message: "File not found" });
+      if (this.selectedWasKnown) (_d2 = this.pane) == null ? void 0 : _d2.markDeleted();
+      else (_e2 = this.pane) == null ? void 0 : _e2.show({ kind: "failure", message: "File not found" });
       return;
     }
-    (_d2 = this.pane) == null ? void 0 : _d2.setEntry(this.model.get(path) ?? null);
-    if (((_e2 = this.model.get(path)) == null ? void 0 : _e2.type) === "file") this.selectedWasKnown = true;
-    if ((_f = this.pane) == null ? void 0 : _f.hasBodyFor(path)) this.pane.update(result);
-    else (_g = this.pane) == null ? void 0 : _g.show(result);
+    (_f = this.pane) == null ? void 0 : _f.setEntry(this.model.get(path) ?? null);
+    if (((_g = this.model.get(path)) == null ? void 0 : _g.type) === "file") this.selectedWasKnown = true;
+    if ((_h = this.pane) == null ? void 0 : _h.hasBodyFor(path)) this.pane.update(result);
+    else (_i = this.pane) == null ? void 0 : _i.show(result);
     this.revealHeading();
   }
   finderFiles() {
