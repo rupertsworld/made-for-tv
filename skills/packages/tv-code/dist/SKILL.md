@@ -116,7 +116,7 @@ If the environment documents no way to learn about changes, the view shows the f
 
 To show how the files differ from another version, such as another branch, give changed entries a `status` of `"added"`, `"modified"` or `"removed"` in `files` or in `list` results. The tree shows `A`, `M` or `D` after the name. Include removed files in the listing so the reader can open them, and read them from the other version.
 
-To show the diff of a changed file, assign `diff`: a function from a path to an element showing its changes, such as an iframe with a diff view, or `null` for an unchanged file. The header's view toggle gains **Diff**, selected when the file opens, beside Preview and Source. Set `data-additions` and `data-deletions` on the element to show the line counts after the file name. Return the same element while the diff is the same; the element calls `diff` again when the tree changes, so it follows a status that changes on `refresh`.
+To show the diff of a changed file, assign `diff`: a function from a path to an element showing its changes, such as an iframe with a diff view, or `null` for an unchanged file. The header's view toggle gains **Diff**, selected when the file opens, beside Preview and Source. Set `data-additions` and `data-deletions` on the element to show the line counts after the file name. Set `aria-busy="true"` on it until it has drawn, and the pane keeps showing what it showed before instead of an empty frame. Return the same element while the diff is the same; the element calls `diff` again when the tree changes, so it follows a status that changes on `refresh`.
 
 ```js
 viewer.diff = path => changes.has(path) ? diffFrameFor(path) : null;

@@ -40,6 +40,9 @@ tv-code .cv-pane-content { flex: 1; min-height: 0; overflow: auto; }
 /* A changed file's diff fills the content area; its counts follow the file name. */
 tv-code .cv-pane-diff { display: flex; height: 100%; }
 tv-code .cv-pane-diff > * { flex: 1; min-width: 0; border: 0; }
+/* A diff still loading sits unseen over the content it will replace. */
+tv-code .cv-pane-content:has(> .cv-pane-diff-pending) { position: relative; }
+tv-code .cv-pane-diff-pending { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 tv-code .cv-diff-counts { display: inline-flex; gap: 6px; margin-left: 4px; font-family: var(--_font-mono); font-size: var(--_code-size); }
 tv-code .cv-diff-additions { color: var(--_added); }
 tv-code .cv-diff-deletions { color: var(--_removed); }

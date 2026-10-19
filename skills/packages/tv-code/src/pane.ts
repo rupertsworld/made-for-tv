@@ -111,18 +111,37 @@ export class Pane {
   /**
    * Offer a diff of the current file as a view mode. When it is the view
    * shown, the element fills the content area until a file body is shown.
+   * While it is `aria-busy`, it loads unseen over the content already shown,
+   * so the pane never shows an empty frame.
    */
   setDiff(element: HTMLElement | null, shown: boolean): void {
     if (element !== this.diff?.element) {
       this.countsObserver?.disconnect();
       this.countsObserver = null;
       if (element) {
-        this.countsObserver = new MutationObserver(() => this.renderPath());
-        this.countsObserver.observe(element, { attributeFilter: ["data-additions", "data-deletions"] });
+        this.countsObserver = new MutationObserver(() => {
+          this.renderPath();
+          if (this.diff?.element === element && this.diff.shown && element.parentElement?.classList.contains("cv-pane-diff-pending")) this.setDiff(element, true);
+        });
+        this.countsObserver.observe(element, { attributeFilter: ["data-additions", "data-deletions", "aria-busy"] });
       }
     }
     this.diff = element ? { element, shown } : null;
     if (element && shown) {
+      // Moving an iframe reloads it, so the element keeps its wrapper.
+      const current = element.parentElement?.classList.contains("cv-pane-diff") && element.parentElement.parentElement === this.content ? element.parentElement : null;
+      const wrapper = current ?? h("div", { className: "cv-pane-diff" }, element);
+      // Only a diff that is not in view yet waits; one already shown stays shown.
+      const busy = (!current || current.classList.contains("cv-pane-diff-pending")) && element.getAttribute("aria-busy") === "true";
+      wrapper.classList.toggle("cv-pane-diff-pending", busy);
+      if (!current) this.content.append(wrapper);
+      if (busy) {
+        // With no file shown to keep, such as the empty state, the pane shows only its progress.
+        if (this.contentPath === null) for (const child of [...this.content.children]) if (child !== wrapper) child.remove();
+        this.renderPath();
+        this.renderActions();
+        return;
+      }
       if (this.fadeTimer) clearTimeout(this.fadeTimer);
       this.fadeTimer = null;
       this.progress.classList.remove("cv-pane-progress-active");
@@ -132,10 +151,7 @@ export class Pane {
       this.result = null;
       this.deleted = false;
       this.contentPath = this.currentPath;
-      // Keep an element that is already shown, with its own state and scroll.
-      if (this.content.firstElementChild?.firstElementChild !== element) {
-        this.content.replaceChildren(h("div", { className: "cv-pane-diff" }, element));
-      }
+      for (const child of [...this.content.children]) if (child !== wrapper) child.remove();
     }
     this.renderPath();
     this.renderActions();

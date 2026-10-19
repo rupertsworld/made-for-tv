@@ -188,3 +188,63 @@ test("the pane follows the diff function as the tree changes", async ({ page }) 
   await expect(page.locator(".cv-code-text")).toHaveText("text");
   await expect(modes(page)).toHaveCount(0);
 });
+
+test("a busy diff element loads unseen behind the previous content and replaces it once ready", async ({ page }) => {
+  await ready(page);
+  await page.locator("tv-code").evaluate(viewer => {
+    const element = document.createElement("iframe");
+    element.src = "data:text/html,<p>diff</p>";
+    element.setAttribute("aria-busy", "true");
+    (window as any).element = element;
+    (viewer as any).diff = (path: string) => path === "changed.ts" ? element : null;
+    (viewer as any).connection = {
+      list: () => [{ name: "changed.ts", type: "file" }, { name: "same.ts", type: "file" }],
+      read: (path: string) => `contents of ${path}`,
+    };
+    (viewer as any).selected = "same.ts";
+  });
+  await expect(page.locator(".cv-code-text")).toHaveText("contents of same.ts");
+  await page.locator('.cv-row[data-path="changed.ts"]').click();
+  // The header moves to the new file at once; the old body stays in view.
+  await expect(page.locator(".cv-pane-path")).toHaveText("changed.ts");
+  await expectModes(page, ["Source", "Diff"], "Diff");
+  await expect(page.locator(".cv-code-text")).toHaveText("contents of same.ts");
+  await expect(page.locator(".cv-pane-progress")).toHaveClass(/cv-pane-progress-active/);
+  const pending = await page.locator(".cv-pane-diff").evaluate(wrapper => ({
+    opacity: getComputedStyle(wrapper).opacity,
+    loaded: wrapper.firstElementChild === (window as any).element && !!(window as any).element.contentWindow,
+    size: [wrapper.clientWidth, wrapper.clientHeight],
+    content: [wrapper.parentElement!.clientWidth, wrapper.parentElement!.clientHeight],
+  }));
+  expect(pending.opacity).toBe("0");
+  expect(pending.loaded).toBe(true);
+  expect(pending.size).toEqual(pending.content);
+  await page.evaluate(() => { (window as any).loadedWindow = (window as any).element.contentWindow; });
+
+  await page.evaluate(() => { (window as any).element.removeAttribute("aria-busy"); });
+  await expect(page.locator(".cv-code-text")).toHaveCount(0);
+  await expect(diffBody(page)).toBeVisible();
+  expect(await page.locator(".cv-pane-diff").evaluate(wrapper => getComputedStyle(wrapper).opacity)).toBe("1");
+  await expect(page.locator(".cv-pane-progress")).not.toHaveClass(/cv-pane-progress-active/);
+  await expect(page.locator(".cv-pane-content")).not.toHaveClass(/cv-pane-faded/);
+  // Revealing keeps the loaded document instead of loading it again.
+  expect(await page.evaluate(() => (window as any).element.contentWindow === (window as any).loadedWindow)).toBe(true);
+});
+
+test("a busy diff opened first shows the loading pane, not the empty state, until it is ready", async ({ page }) => {
+  await ready(page);
+  await page.locator("tv-code").evaluate(viewer => {
+    const element = document.createElement("iframe");
+    element.src = "data:text/html,<p>diff</p>";
+    element.setAttribute("aria-busy", "true");
+    (window as any).element = element;
+    (viewer as any).diff = () => element;
+    (viewer as any).connection = { list: () => [{ name: "changed.ts", type: "file" }, { name: "other.ts", type: "file" }], read: () => "text" };
+    (viewer as any).selected = "changed.ts";
+  });
+  await expect(page.locator(".cv-pane-diff")).toHaveCount(1);
+  await expect(page.locator(".cv-pane-content > *")).toHaveCount(1);
+  await expect(page.locator(".cv-pane-progress")).toHaveClass(/cv-pane-progress-active/);
+  await page.evaluate(() => { (window as any).element.removeAttribute("aria-busy"); });
+  await expect(diffBody(page)).toBeVisible();
+});
