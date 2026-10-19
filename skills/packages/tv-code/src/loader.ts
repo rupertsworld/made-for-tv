@@ -72,12 +72,19 @@ export class Loader {
     if (!force || folder.listing !== "listed") this.model.setListing(path, "listing");
     this.onChange();
     const list = this.connection.list;
+    // Listing the parent again replaces this folder's node with one that keeps
+    // its listing state, so a node still waiting for this listing receives it.
+    // A folder removed and created again starts unlisted and does not.
+    const stillFolder = () => {
+      const node = this.model.get(path);
+      return this.generation === generation && node?.type === "folder" && (node === listedFolder || node.listing === "listing");
+    };
     const pending = Promise.resolve().then(() => list(path)).then(entries => {
-      if (this.generation !== generation || this.model.get(path) !== listedFolder) return;
+      if (!stillFolder()) return;
       this.model.applyListing(path, entries);
       this.onChange();
     }, error => {
-      if (this.generation !== generation || this.model.get(path) !== listedFolder) return;
+      if (!stillFolder()) return;
       this.model.setListing(path, "failed", readFailure(error).message);
       this.onChange();
     }).finally(() => { if (this.lists.get(path) === pending) this.lists.delete(path); });

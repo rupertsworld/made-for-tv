@@ -387,12 +387,16 @@ class Loader {
     if (!force || folder.listing !== "listed") this.model.setListing(path, "listing");
     this.onChange();
     const list = this.connection.list;
+    const stillFolder = () => {
+      const node = this.model.get(path);
+      return this.generation === generation && (node == null ? void 0 : node.type) === "folder" && (node === listedFolder || node.listing === "listing");
+    };
     const pending = Promise.resolve().then(() => list(path)).then((entries2) => {
-      if (this.generation !== generation || this.model.get(path) !== listedFolder) return;
+      if (!stillFolder()) return;
       this.model.applyListing(path, entries2);
       this.onChange();
     }, (error) => {
-      if (this.generation !== generation || this.model.get(path) !== listedFolder) return;
+      if (!stillFolder()) return;
       this.model.setListing(path, "failed", readFailure(error).message);
       this.onChange();
     }).finally(() => {

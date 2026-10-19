@@ -109,6 +109,24 @@ describe("loader", () => {
     expect(model.get("stale")).toBeUndefined();
   });
 
+  it("applies a folder listing that finishes after its parent was listed again", async () => {
+    const model = new TreeModel();
+    let release!: (value: { name: string }[]) => void;
+    const list = vi.fn(async (path: string) => path === "src"
+      ? new Promise<{ name: string }[]>(resolve => { release = resolve; })
+      : [{ name: "src", type: "dir" }]);
+    const loader = new Loader(model, () => {});
+    loader.setConnection({ list, read: () => "text" });
+    await loader.list("");
+    const child = loader.list("src");
+    // Listing the root again replaces the node of src while its own listing is in flight.
+    await loader.list("", true);
+    release([{ name: "app.ts" }]);
+    await child;
+    expect(model.get("src")?.listing).toBe("listed");
+    expect(model.children("src").map(node => node.path)).toEqual(["src/app.ts"]);
+  });
+
   it("combines refresh calls and runs one more round after in-flight changes", async () => {
     vi.useFakeTimers();
     try {
