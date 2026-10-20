@@ -37,12 +37,28 @@ tv-code .cv-pane-progress-active::before { content: ""; display: block; width: 3
 tv-code .cv-pane-notice:empty { display: none; }
 tv-code .cv-pane-notice { padding: 8px 12px; border-bottom: 1px solid var(--_border); }
 tv-code .cv-pane-content { flex: 1; min-height: 0; overflow: auto; }
-/* A changed file's diff fills the content area; its counts follow the file name. */
-tv-code .cv-pane-diff { display: flex; height: 100%; }
-tv-code .cv-pane-diff > * { flex: 1; min-width: 0; border: 0; }
-/* A diff still loading sits unseen over the content it will replace. */
+/*
+ * A changed file's diff, drawn by @pierre/diffs in the shadow root of its own
+ * element, in the code font, on the pane background and in the colour scheme
+ * of the element. The diff library sets these properties on that element
+ * from inside its shadow root, which a rule from the page overrides. Its
+ * counts follow the file name.
+ */
+tv-code .cv-pane-diff diffs-container {
+  display: block;
+  min-width: 100%;
+  color-scheme: inherit;
+  --diffs-font-family: var(--_font-mono);
+  --diffs-font-size: var(--_code-size);
+  --diffs-line-height: var(--_code-line-height);
+  --diffs-light-bg: var(--_background);
+  --diffs-dark-bg: var(--_background);
+  --diffs-overflow-override: visible;
+}
+tv-code .cv-diff-equal { margin: 0; padding: 12px 16px; color: var(--_text-muted); }
+/* A diff still drawing sits unseen over the content it will replace. */
 tv-code .cv-pane-content:has(> .cv-pane-diff-pending) { position: relative; }
-tv-code .cv-pane-diff-pending { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+tv-code .cv-pane-diff-pending { position: absolute; inset: 0; overflow: hidden; opacity: 0; pointer-events: none; }
 tv-code .cv-diff-counts { display: inline-flex; gap: 6px; margin-left: 4px; font-family: var(--_font-mono); font-size: var(--_code-size); }
 tv-code .cv-diff-additions { color: var(--_added); }
 tv-code .cv-diff-deletions { color: var(--_removed); }

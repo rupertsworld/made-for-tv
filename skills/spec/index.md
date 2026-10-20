@@ -50,7 +50,7 @@ Each skill has one name, used for its specification folder, package folder, pack
 
 `npm run build` builds every package. A package build replaces `packages/<skill>/dist/` with:
 
-- the JavaScript, built by Vite as one ES module named after the skill, with its dependencies bundled;
+- the JavaScript, built by Vite as one ES module named after the skill, with its dependencies bundled. tv-code adds a second module, `tv-code-diff.js`, which `tv-code.js` imports when it first shows a diff. Every module that `tv-code.js` reaches without going through the diff module is placed in `tv-code.js`, including the modules it imports dynamically; the diff module holds only what it alone uses, and imports the rest from `tv-code.js`. The tv-code build fails when it would produce any other JavaScript file. It also replaces the Shiki and theme catalogs that `@pierre/diffs` imports with the grammars tv-code bundles and the two themes the diff uses, as `src/diff-highlighting.ts` describes;
 - the element CSS: `spec/tv-markdown/style.css` copied unchanged, or, for a skill with templates, the style list of the element template joined by `stylesheet()` from `spec/types.ts`. The tv-code build then appends the tv-markdown stylesheet for rendered Markdown files;
 - `SKILL.md`, copied from `src/index.md`.
 

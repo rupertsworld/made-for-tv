@@ -8,6 +8,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@pierre/diffs": "1.4.3",
     "shiki": "4.5.0",
     "tv-markdown": "0.1.0"
   }

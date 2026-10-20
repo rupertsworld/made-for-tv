@@ -8,6 +8,7 @@ The element is a view. It does not know where its files come from, whether they 
 
 - Importing `tv-code.js` defines `<tv-code>`. The module exports the element class `TvCodeElement`.
 - The module is self-contained. It bundles its syntax highlighter (Shiki, with a fixed set of languages) and the `tv-markdown` element, which renders Markdown files. A page that also loads `tv-markdown.js` keeps whichever definition of `<tv-markdown>` loaded first; both are the same element.
+- [Diffs](#diffs-of-changed-files) are drawn by a second module, `tv-code-diff.js`, which bundles `@pierre/diffs`. The element imports it from the folder of `tv-code.js` the first time the page gives it two versions of a file, so a page that shows no diff does not load it. It imports the code it shares with `tv-code.js`, such as the highlighter grammars, from `tv-code.js` in the same folder, so both files keep their names and sit side by side.
 - The element renders its interface in its light DOM, inside one generated container. It does not use a shadow root, so page styles and event listeners apply to the rendered content. Child tags that describe files stay in place and are hidden.
 - The element fills the space it is given. Its default height is the height of the viewport (`100dvh`), which suits an artifact that shows only the viewer; a page that places it in a larger layout sets its height.
 
@@ -140,7 +141,7 @@ When the input changes, the element keeps the open file, the line selection and 
 | --------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Property  | `files`           | All files at once, as an array of entries or an object of paths to text. See [The `files` property](#the-files-property).                                                             |
 | Property  | `connection`      | An object with a `read` function and an optional `list` function. See [The `connection` property](#the-connection-property).                                                            |
-| Property  | `diff`            | A function from a file path to an element showing how that file changed, or `null`. See [Diffs of changed files](#diffs-of-changed-files).                                             |
+| Property  | `diff`            | A function from a file path to the two versions of that file to show as its diff, or `null`. See [Diffs of changed files](#diffs-of-changed-files).                                   |
 | Child     | `<tv-code-file>`, `<tv-code-folder>` | Files and folders written into the page. See [Child tags](#child-tags).                                                                                     |
 | Attribute | `label`           | The name of the root, such as a repository name, shown at the top of the sidebar. Defaults to `Files`.                                                                                  |
 | Attribute | `selected`        | The path of the open file. Reflects the property of the same name. See [Selection](#selection).                                                                                        |
@@ -204,7 +205,7 @@ The header shows no other details of the file.
 
 ### Opening a file
 
-When a file is opened, the header changes at once. The previous content stays in place until the new content is ready, faded after 200 ms, with a thin progress bar at the top of the pane. The scroll position starts at the top, or at the [selected lines](#line-selection) when there are any. A failed read shows the message and a Retry button in place of the content.
+When a file is opened, the header changes at once. The previous content stays in place until the new content is ready, faded after 200 ms, with a thin progress bar at the top of the pane. When no file was shown before, as in the empty state or after a failure, the pane shows only the progress bar. The scroll position starts at the top, or at the [selected lines](#line-selection) when there are any. A failed read shows the message and a Retry button in place of the content.
 
 ### Kinds of file
 
@@ -218,15 +219,28 @@ The element decides how to show a file from its name and, when needed, its bytes
 
 ### Diffs of changed files
 
-A page can show how a file changed, such as a comparison with another version. It assigns `diff`, a function that takes the path of a file and returns an element showing its changes, such as an iframe holding a diff view, or `null` or `undefined` for an unchanged file. It may return a promise. The element calls it when a file is opened and whenever the tree changes, and calls nothing when `diff` is unset.
+A page can show how a file changed, such as a comparison with another version. It assigns `diff`, a function that takes the path of a file and returns its two versions, or `null` or `undefined` for an unchanged file. It may return a promise.
+
+```ts
+type DiffFunction = (path: string) => DiffVersions | null | undefined | Promise<DiffVersions | null | undefined>;
+
+interface DiffVersions {
+  before?: string | null; // the text of the file before the change
+  after?: string | null;  // the text of the file after the change
+}
+```
+
+A version that is absent, `null` or `undefined` is a file that does not exist on that side, compared as empty text: every line of an added file is an added line, and every line of a removed file a removed line. A function that throws or rejects, or returns any other value, counts as `null`, and the element logs the error.
+
+The element calls the function when a file is opened, when `diff` is assigned, when the input changes, and when a [refresh](#live-updates) covers the open file: `refresh()`, or `refresh(path)` with the path of the open file. It calls nothing when `diff` is unset.
 
 - For a file with a diff, the view-mode toggle in the header gains **Diff**, with a diff icon, after the views the file already has: Preview, Source and Diff for Markdown and SVG files; Preview and Diff for other images; Source and Diff for other files. Diff is selected when the file is opened.
-- With Diff selected, the element fills the content area below the header, and the element does not read the file. The page keeps the diff current. Wrap lines does not apply.
-- While the element has `aria-busy="true"` when it is put in place, such as an iframe whose document has not drawn yet, it loads unseen over the content already shown, which stays in view with the usual fade and progress bar of [opening a file](#opening-a-file). When the attribute is removed or set to `false`, the element replaces that content without being moved, so an iframe is not loaded again. With no file shown to keep, the pane shows only its progress. A diff already in view is not hidden again when it becomes busy.
+- With Diff selected, the content area shows the diff, and the element does not read the file. Wrap lines does not apply.
+- The diff is drawn by `@pierre/diffs` as one unified diff: one column of lines with old and new line numbers, removed lines tinted red and added lines green, with the changed characters within a changed line marked. Long lines wrap. Unchanged stretches between changes are collapsed to a separator that gives the number of hidden lines. The lines are highlighted with the [bundled languages](#languages), detected as for code, in the GitHub light or dark colours. The diff uses the code font and the background of the file pane, and follows the colour scheme of the element. Equal versions show `No differences`.
+- After the header changes, the content already shown stays in view, with the usual fade and progress bar of [opening a file](#opening-a-file), until the diff has been drawn, which then replaces it. A refresh that gives new versions of a diff in view draws them in place, keeping the scroll position.
 - Choosing Preview or Source shows the file as usual, with its actions; for Markdown and SVG files it sets `show-source` as the two-way toggle does. The choice lasts while the file stays open; opening a file again selects Diff.
-- When the element has `data-additions` and `data-deletions` attributes, the header shows them after the file name as `+40 −39`, in the colours for added and removed lines, in every view mode. They follow changes to the attributes.
-- When a change to the tree gives the open file a different element, or none, the pane follows. While the function returns the same element, the element is not replaced, so the page returns the same element for as long as it shows the same diff.
-- Files without a diff keep the header and toggle described above. A function that throws or rejects counts as `null`, and the element logs the error.
+- The header shows the number of added and removed lines after the file name, as `+40 −39`, in the colours for added and removed lines, in every view mode. Equal versions show no counts.
+- When a refresh makes the function return `null` for the open file, or versions for a file that had none, the pane opens the file again with or without its diff. Files without a diff keep the header and toggle described above.
 
 ### Code
 
@@ -385,9 +399,10 @@ The variables are named `--tv-code-syntax-<role>`. Comments are italic. Tokens w
 
 The built skill, in `skills/tv-code/`, contains:
 
-- `SKILL.md`: when to use the skill; how to load it (copy `tv-code.js` and `tv-code.css` next to the artifact `index.html`); the three inputs with short examples; connecting a service through a connection and its change signal through `refresh`; keeping the selection in the address; and the attributes and events;
+- `SKILL.md`: when to use the skill; how to load it (copy `tv-code.js` and `tv-code.css` next to the artifact `index.html`, and `tv-code-diff.js` too for diffs); the three inputs with short examples; connecting a service through a connection and its change signal through `refresh`; keeping the selection in the address; and the attributes and events;
 - `tv-code.js`, with the highlighter, its languages and `tv-markdown` bundled;
+- `tv-code-diff.js`, the diff module, with `@pierre/diffs` and the GitHub light and dark themes bundled;
 - `tv-code.css`, the specification stylesheet followed by the `tv-markdown` stylesheet;
-- `THIRD-PARTY-NOTICES.txt`, with the licences for bundled npm packages and the upstream TextMate grammars carried by Shiki.
+- `THIRD-PARTY-NOTICES.txt`, with the licences for bundled npm packages of both modules and the upstream terms of the TextMate grammars and themes carried by Shiki.
 
 The package, in `packages/tv-code/`, depends on the `tv-markdown` package in this repository for the Markdown element. It holds the element code, `SKILL.md` and tests: unit tests for logic with real branching, such as path handling, ordering and dim patterns, language detection, matching in the finder and the comparison of file versions, and browser tests for every behaviour a reader can observe. The independent templates under [`templates/`](templates/) specify the interface markup that tv-code builds: the shell, sidebar tree, pane header and finder. They receive highlighted code, rendered Markdown and image HTML as data; Shiki and tv-markdown produce that content, as specified in the [Code](#code) and [Markdown](#markdown) sections. Storybook shows each view and useful parts without importing package source. Browser comparisons check the built interface against the templates. The repository layout and build are specified in [the repository specification](../index.md).

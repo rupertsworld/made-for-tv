@@ -52,9 +52,10 @@ const theme = {
 };
 
 // Each grammar is imported individually and registered only when requested.
-// The final single-file build includes their code, but avoids compiling every
+// The build places them all in tv-code.js, but avoids compiling every
 // TextMate grammar when a reader opens just one language.
-const grammarLoaders: Record<string, () => Promise<{ default: LanguageRegistration[] }>> = {
+/** The bundled grammars by language id, each loaded on first use. The diff module highlights with them too. */
+export const grammarLoaders: Record<string, () => Promise<{ default: LanguageRegistration[] }>> = {
   javascript: () => import("@shikijs/langs/javascript"), typescript: () => import("@shikijs/langs/typescript"),
   jsx: () => import("@shikijs/langs/jsx"), tsx: () => import("@shikijs/langs/tsx"),
   json: () => import("@shikijs/langs/json"), jsonc: () => import("@shikijs/langs/jsonc"),

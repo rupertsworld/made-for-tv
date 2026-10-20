@@ -18,11 +18,16 @@ export interface EntryInput {
 export type EntryStatus = "added" | "modified" | "removed";
 
 /**
- * An element that shows how a file changed, such as an iframe with a diff
- * view, or nothing for an unchanged file. Its `data-additions` and
- * `data-deletions` attributes, when set, are shown in the file header.
+ * The text of a file before and after a change. A missing version is a file
+ * that does not exist on that side, and counts as empty.
  */
-export type DiffFunction = (path: string) => HTMLElement | null | undefined | Promise<HTMLElement | null | undefined>;
+export interface DiffVersions {
+  before?: string | null;
+  after?: string | null;
+}
+
+/** The versions of a changed file to show as its diff, or nothing for an unchanged file. */
+export type DiffFunction = (path: string) => DiffVersions | null | undefined | Promise<DiffVersions | null | undefined>;
 
 /** What `Connection.read` may resolve to. */
 export type ReadResult = string | Response | Blob | ArrayBuffer | ArrayBufferView;

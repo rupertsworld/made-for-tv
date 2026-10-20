@@ -6,13 +6,26 @@ import { Pane } from "./pane";
 import { PreferenceStore } from "./preferences";
 import { Sidebar } from "./sidebar";
 import { TreeModel } from "./tree-model";
-import type { Connection, DiffFunction, EntryInput, LineRange } from "./types";
+import type { Connection, DiffFunction, DiffVersions, EntryInput, LineRange } from "./types";
 import { h } from "./dom";
 import { Finder } from "./finder";
 import { detectLanguage, fileKind } from "./languages";
 import { highlightElement } from "./highlight";
 import type { ImageSource } from "./media-view";
 import { LinkClickEvent } from "tv-markdown";
+import type { DiffView, FileChange } from "./tv-code-diff";
+
+/**
+ * The diff module and @pierre/diffs, imported the first time a page gives the
+ * versions of a file, so a page without diffs never loads them. The build
+ * emits the module as tv-code-diff.js, beside tv-code.js.
+ */
+let diffModule: Promise<typeof import("./tv-code-diff")> | undefined;
+function loadDiffModule(): Promise<typeof import("./tv-code-diff")> {
+  // A failed load, such as of a file not copied, is tried again on the next diff.
+  diffModule ??= import("./tv-code-diff").catch(error => { diffModule = undefined; throw error; });
+  return diffModule;
+}
 
 /** The view element; it never owns persistence or transport details. */
 export class TvCodeElement extends HTMLElement {
@@ -55,6 +68,8 @@ export class TvCodeElement extends HTMLElement {
       if (path === this.selectedValue) { this.pane?.setEntry(this.model.get(path) ?? null); this.pane?.update(result); }
     };
     this.loader.onRefreshComplete = (paths, all) => {
+      const open = this.selectedValue;
+      if (open && this.diffValue && (all || paths.includes(open))) void this.refreshDiff(open);
       if (all) return; // Re-reading the open Markdown file already resolves its images.
       for (const path of paths) if (this.pane?.referencesImage(path)) this.pane.reloadImage(path);
     };
@@ -78,7 +93,7 @@ export class TvCodeElement extends HTMLElement {
     this.applyInput();
   }
 
-  /** A function giving an element that shows how a file changed, or nothing for an unchanged file. */
+  /** A function giving the versions of a changed file to show as its diff, or nothing for an unchanged file. */
   get diff(): DiffFunction | null { return this.diffValue; }
   set diff(value: DiffFunction | null | undefined) {
     this.diffValue = value ?? null;
@@ -341,20 +356,35 @@ export class TvCodeElement extends HTMLElement {
       void this.loadFile(path);
     }
     if (!path) this.maybeOpenReadme();
-    else if (this.diffValue && openEntry?.type === "file" && !this.pane?.isDeleted) void this.followDiff(path);
   }
 
-  /** Reopen the file when its diff element changes with the tree. */
-  private async followDiff(path: string): Promise<void> {
+  /**
+   * Ask the page again for the versions of the open file after a refresh
+   * that covered it. A diff that is still offered updates in place; one that
+   * appears or goes away opens the file again.
+   */
+  private async refreshDiff(path: string): Promise<void> {
     const epoch = this.readEpoch;
-    const element = await this.diffFor(path);
+    const diff = await this.diffFor(path);
     if (epoch !== this.readEpoch || this.selectedValue !== path || !this.pane) return;
-    if (element !== this.pane.diffElement) void this.loadFile(path);
+    if ((diff !== null) !== this.pane.hasDiff) void this.loadFile(path);
+    else if (diff) this.pane.setDiff(diff, this.pane.diffShown);
   }
 
-  private async diffFor(path: string): Promise<HTMLElement | null> {
-    try { return (await this.diffValue?.(path)) || null; }
-    catch (error) { console.error("tv-code diff failed", error); return null; }
+  /** The change of a file from the versions the page gives, or null for an unchanged file or a failure. */
+  private async diffFor(path: string): Promise<{ change: FileChange; createView: (onDrawn: () => void) => DiffView } | null> {
+    if (!this.diffValue) return null;
+    try {
+      const versions: unknown = await this.diffValue(path);
+      if (versions === null || versions === undefined) return null;
+      if (!isDiffVersions(versions)) throw new TypeError("diff must return { before, after } with text or nothing for each, or null");
+      const module = await loadDiffModule();
+      const languageId = detectLanguage(path, this.model.get(path)?.language)?.id ?? null;
+      return {
+        change: module.compareVersions(path, versions.before ?? "", versions.after ?? "", languageId),
+        createView: onDrawn => new module.DiffView(onDrawn),
+      };
+    } catch (error) { console.error("tv-code diff failed", error); return null; }
   }
 
   private maybeOpenReadme(): void {
@@ -431,12 +461,12 @@ export class TvCodeElement extends HTMLElement {
 
   private async loadFile(path: string, retry = false, showAnyway = false): Promise<void> {
     const epoch = ++this.readEpoch;
-    if (this.diffValue || this.pane?.diffElement) {
-      // A file shown as its diff is not read; the page keeps the diff current.
-      const element = await this.diffFor(path);
+    if (this.diffValue || this.pane?.hasDiff) {
+      // A file shown as its diff is not read.
+      const diff = await this.diffFor(path);
       if (epoch !== this.readEpoch || this.selectedValue !== path) return;
-      const shown = element !== null && this.diffLeftFor !== path;
-      this.pane?.setDiff(element, shown);
+      const shown = diff !== null && this.diffLeftFor !== path;
+      this.pane?.setDiff(diff, shown);
       this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
       if (shown) return;
     }
@@ -594,6 +624,13 @@ export class TvCodeElement extends HTMLElement {
     else if (event.altKey && event.key.toLowerCase() === "z" && this.selectedValue && this.pane?.element.querySelector(".cv-code-view")) { event.preventDefault(); this.toggleWrap(); }
     else if (event.key === "Escape" && this.sidebar?.isNarrow && this.sidebar.isOpen) { event.preventDefault(); this.sidebar.close(); }
   }
+}
+
+/** Whether a value returned by the page's `diff` function has the shape of `DiffVersions`. */
+function isDiffVersions(value: unknown): value is DiffVersions {
+  if (typeof value !== "object" || value === null) return false;
+  const { before, after } = value as Record<string, unknown>;
+  return [before, after].every(side => side === undefined || side === null || typeof side === "string");
 }
 
 if (!customElements.get("tv-code")) customElements.define("tv-code", TvCodeElement);

@@ -1,5 +1,5 @@
-/** Change letters in the tree, and a diff of a changed file in the file pane. */
-import { expect, test, type Page } from "@playwright/test";
+/** Change letters in the tree, and the diff of a changed file in the file pane. */
+import { expect, test, type Page, type Route } from "@playwright/test";
 
 async function ready(page: Page): Promise<void> {
   await page.goto("/packages/tv-code/test/browser/fixture.html");
@@ -8,10 +8,46 @@ async function ready(page: Page): Promise<void> {
 }
 
 const status = (page: Page, path: string) => page.locator(`.cv-row[data-path="${path}"] .cv-row-status`);
-const diffBody = (page: Page) => page.locator(".cv-pane-content > .cv-pane-diff > iframe");
+/** The diff in view, not one still drawing unseen. */
+const diffBody = (page: Page) => page.locator(".cv-pane-content > .cv-pane-diff:not(.cv-pane-diff-pending)");
 const modes = (page: Page) => page.getByRole("group", { name: "View mode" }).getByRole("button");
 const mode = (page: Page, name: string) => page.getByRole("group", { name: "View mode" }).getByRole("button", { name, exact: true });
 const counts = (page: Page) => page.locator(".cv-pane-path .cv-diff-counts");
+
+/** The lines of the diff in view, as [kind, text]: context, change-addition or change-deletion. */
+async function diffLines(page: Page): Promise<string[][]> {
+  const lines = diffBody(page).locator("diffs-container [data-content] > [data-line-type]");
+  await expect(lines.first()).toBeVisible();
+  return lines.evaluateAll(rows => rows.map(row => [row.getAttribute("data-line-type") ?? "", (row.textContent ?? "").replace(/\n$/, "")]));
+}
+
+/**
+ * Record, on each animation frame from now on, the open file whenever the
+ * content area shows nothing drawn: no text, and no diff lines. Returns a
+ * function that gives the files recorded.
+ */
+async function recordBlankFrames(page: Page): Promise<() => Promise<string[]>> {
+  await page.evaluate(() => {
+    const blanks: string[] = (window as any).blanks = [];
+    const content = document.querySelector(".cv-pane-content")!;
+    const sample = () => {
+      const shown = [...content.children].filter(child => !child.classList.contains("cv-pane-diff-pending"));
+      if (!shown.some(child => child.textContent?.trim() || child.querySelector("diffs-container")?.shadowRoot?.querySelector("[data-content]")?.textContent?.trim()))
+        blanks.push(document.querySelector(".cv-path-file")?.textContent ?? "");
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  return () => page.evaluate(() => (window as any).blanks);
+}
+
+/** Hold requests for the diff module until the returned function is called. */
+async function holdDiffModule(page: Page): Promise<() => void> {
+  let release!: () => void;
+  const released = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/tv-code-diff.js", async (route: Route) => { await released; await route.continue(); });
+  return release;
+}
 
 /** Expect the view-mode buttons by name, with the pressed one. */
 async function expectModes(page: Page, names: string[], pressed: string): Promise<void> {
@@ -86,58 +122,49 @@ test("a listing that changes an entry's status updates its letter on refresh", a
   await expect(status(page, "a.ts")).toHaveText("A");
 });
 
-test("a diff element is the default view of a changed file, beside its rendered and source views", async ({ page }) => {
+test("a changed file opens on the diff of its two versions, beside its rendered and source views", async ({ page }) => {
   await ready(page);
   await page.locator("tv-code").evaluate(viewer => {
     (window as any).reads = [];
-    const elements: Record<string, HTMLElement> = {};
-    for (const path of ["changed.md", "changed.ts"]) {
-      const frame = document.createElement("iframe");
-      frame.src = `data:text/html,<p>${path}</p>`;
-      frame.dataset.additions = "2";
-      frame.dataset.deletions = "1";
-      elements[path] = frame;
-    }
-    (window as any).elements = elements;
-    (viewer as any).diff = async (path: string) => elements[path] ?? null;
+    const versions: Record<string, object> = {
+      "changed.md": { before: "# Title\n\nold line\n", after: "# Title\n\nnew line\nadded line\n" },
+      "changed.ts": { before: "const a = 1;\n", after: "const a = 2;\n" },
+    };
+    (viewer as any).diff = async (path: string) => versions[path] ?? null;
     (viewer as any).connection = {
       list: () => ["changed.md", "changed.ts", "same.md", "same.ts"].map(name => ({ name, type: "file" })),
       read: (path: string) => { (window as any).reads.push(path); return `contents of ${path}`; },
     };
     (viewer as any).selected = "changed.md";
   });
-  const isElement = (path: string) => page.locator(".cv-pane-diff > *").evaluate((element, path) => element === (window as any).elements[path], path);
-  await expect(diffBody(page)).toBeVisible();
-  expect(await isElement("changed.md")).toBe(true);
+  expect(await diffLines(page)).toEqual([
+    ["context", "# Title"], ["context", ""], ["change-deletion", "old line"],
+    ["change-addition", "new line"], ["change-addition", "added line"],
+  ]);
   await expectModes(page, ["Preview", "Source", "Diff"], "Diff");
   await expect(page.getByRole("button", { name: "Wrap lines" })).toHaveCount(0);
   await expect(counts(page)).toHaveText("+2\u22121");
-  const size = await page.locator(".cv-pane-content").evaluate(content => ({
-    content: [content.clientWidth, content.clientHeight],
-    diff: [content.querySelector("iframe")!.clientWidth, content.querySelector("iframe")!.clientHeight],
-  }));
-  expect(size.diff).toEqual(size.content);
+  // The diff fills the width of the content area, and the file is not read.
+  const width = await page.locator(".cv-pane-content").evaluate(content => [content.clientWidth, content.querySelector("diffs-container")!.clientWidth]);
+  expect(width[1]).toBe(width[0]);
   expect(await page.evaluate(() => (window as any).reads)).toEqual([]);
-
-  // The counts follow the element's attributes.
-  await page.evaluate(() => { (window as any).elements["changed.md"].dataset.additions = "3"; });
-  await expect(counts(page)).toHaveText("+3\u22121");
 
   await mode(page, "Preview").click();
   await expect(page.locator(".cv-markdown-view")).toContainText("contents of changed.md");
   await expectModes(page, ["Preview", "Source", "Diff"], "Preview");
-  await expect(counts(page)).toHaveText("+3\u22121");
+  await expect(counts(page)).toHaveText("+2\u22121");
   await mode(page, "Source").click();
   await expect(page.locator(".cv-code-text")).toHaveText("contents of changed.md");
   await expectModes(page, ["Preview", "Source", "Diff"], "Source");
   await expect(page.locator("tv-code")).toHaveAttribute("show-source", "");
   await expect(page.getByRole("button", { name: "Wrap lines" })).toBeVisible();
   await mode(page, "Diff").click();
-  await expect(diffBody(page)).toBeVisible();
-  expect(await isElement("changed.md")).toBe(true);
+  expect(await diffLines(page)).toContainEqual(["change-addition", "added line"]);
   await expectModes(page, ["Preview", "Source", "Diff"], "Diff");
+  await expect(page.locator(".cv-code-text")).toHaveCount(0);
   await mode(page, "Preview").click();
   await expect(page.locator(".cv-markdown-view")).toBeVisible();
+  await expect(diffBody(page)).toHaveCount(0);
 
   // Unchanged files keep the plain toggle, or none, and no counts.
   await page.locator('.cv-row[data-path="same.md"]').click();
@@ -151,9 +178,9 @@ test("a diff element is the default view of a changed file, beside its rendered 
 
   // A changed code file offers its source and the diff, the diff first.
   await page.locator('.cv-row[data-path="changed.ts"]').click();
-  await expect(diffBody(page)).toBeVisible();
-  expect(await isElement("changed.ts")).toBe(true);
+  expect(await diffLines(page)).toEqual([["change-deletion", "const a = 1;"], ["change-addition", "const a = 2;"]]);
   await expectModes(page, ["Source", "Diff"], "Diff");
+  await expect(counts(page)).toHaveText("+1\u22121");
   await mode(page, "Source").click();
   await expect(page.locator(".cv-code-text")).toHaveText("contents of changed.ts");
   await expectModes(page, ["Source", "Diff"], "Source");
@@ -166,21 +193,132 @@ test("a diff element is the default view of a changed file, beside its rendered 
   expect(await page.evaluate(() => (window as any).reads)).toEqual(["changed.md", "changed.md", "changed.md", "same.md", "same.ts", "changed.ts"]);
 });
 
-test("the pane follows the diff function as the tree changes", async ({ page }) => {
+test("a missing version is an empty file, so an added or removed file shows every line as changed", async ({ page }) => {
   await ready(page);
   await page.locator("tv-code").evaluate(viewer => {
-    const state = { changed: true };
-    const element = document.createElement("iframe");
-    element.src = "data:text/html,diff";
+    const versions: Record<string, object> = {
+      "added.ts": { after: "one\ntwo\nthree\n" },
+      "removed.ts": { before: "one\ntwo\n", after: null },
+    };
+    (viewer as any).diff = (path: string) => versions[path] ?? null;
+    (viewer as any).files = [{ path: "added.ts", content: "one\ntwo\nthree\n", status: "added" }, { path: "removed.ts", content: "one\ntwo\n", status: "removed" }];
+    (viewer as any).selected = "added.ts";
+  });
+  expect(await diffLines(page)).toEqual([["change-addition", "one"], ["change-addition", "two"], ["change-addition", "three"]]);
+  await expect(counts(page)).toHaveText("+3\u22120");
+  await page.locator('.cv-row[data-path="removed.ts"]').click();
+  await expect(page.locator(".cv-pane-path .cv-path-file")).toHaveText("removed.ts");
+  await expect(counts(page)).toHaveText("+0\u22122");
+  expect(await diffLines(page)).toEqual([["change-deletion", "one"], ["change-deletion", "two"]]);
+});
+
+test("equal versions show No differences in the Diff view, with no counts", async ({ page }) => {
+  await ready(page);
+  await page.locator("tv-code").evaluate(viewer => {
+    (viewer as any).diff = () => ({ before: "same\n", after: "same\n" });
+    (viewer as any).files = { "a.ts": "same\n", "b.ts": "other\n" };
+    (viewer as any).selected = "a.ts";
+  });
+  await expect(diffBody(page)).toHaveText("No differences");
+  await expect(diffBody(page).getByRole("status")).toHaveText("No differences");
+  await expect(diffBody(page).locator("diffs-container")).toHaveCount(0);
+  await expectModes(page, ["Source", "Diff"], "Diff");
+  await expect(counts(page)).toHaveCount(0);
+});
+
+test("a diff function that throws, rejects or returns another shape counts as no diff", async ({ page }) => {
+  await ready(page);
+  const errors: string[] = [];
+  page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
+  await page.locator("tv-code").evaluate(viewer => {
+    const results: Record<string, () => unknown> = {
+      "throws.ts": () => { throw new Error("no versions"); },
+      "rejects.ts": () => Promise.reject(new Error("no versions")),
+      "shape.ts": () => ({ before: 1, after: "two" }),
+    };
+    (viewer as any).diff = (path: string) => results[path]();
+    (viewer as any).files = { "throws.ts": "a", "rejects.ts": "b", "shape.ts": "c" };
+  });
+  for (const [path, text] of [["throws.ts", "a"], ["rejects.ts", "b"], ["shape.ts", "c"]]) {
+    await page.locator(`.cv-row[data-path="${path}"]`).click();
+    await expect(page.locator(".cv-code-text")).toHaveText(text);
+    await expect(modes(page)).toHaveCount(0);
+  }
+  await expect.poll(() => errors.filter(error => error.startsWith("tv-code diff failed")).length).toBe(3);
+});
+
+test("the diff module loads only once the page gives the versions of a file", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", request => { if (request.url().endsWith("/tv-code-diff.js")) requests.push(request.url()); });
+  await ready(page);
+  await page.locator("tv-code").evaluate(viewer => {
+    (viewer as any).files = { "a.ts": "a", "b.ts": "b", "README.md": "# Readme" };
+    (viewer as any).selected = "a.ts";
+  });
+  await expect(page.locator(".cv-code-text")).toHaveText("a");
+  await page.locator('.cv-row[data-path="README.md"]').click();
+  await expect(page.locator(".cv-markdown-view")).toContainText("Readme");
+  // A diff function that has no versions for the open files does not need it either.
+  await page.locator("tv-code").evaluate(viewer => {
+    (window as any).changed = new Set<string>();
+    (viewer as any).diff = (path: string) => (window as any).changed.has(path) ? { before: "a\n", after: "b\n" } : null;
+  });
+  await page.locator('.cv-row[data-path="b.ts"]').click();
+  await expect(page.locator(".cv-code-text")).toHaveText("b");
+  await page.waitForLoadState("networkidle");
+  expect(requests).toEqual([]);
+
+  await page.evaluate(() => (window as any).changed.add("a.ts"));
+  await page.locator('.cv-row[data-path="a.ts"]').click();
+  expect(await diffLines(page)).toEqual([["change-deletion", "a"], ["change-addition", "b"]]);
+  expect(requests).toHaveLength(1);
+});
+
+test("a refresh asks for the versions again and draws the change in place, or shows the file when it is unchanged", async ({ page }) => {
+  await ready(page);
+  await page.setViewportSize({ width: 900, height: 400 });
+  await page.locator("tv-code").evaluate(viewer => {
+    // Sixty changed lines, so the diff is taller than the pane.
+    const lines = Array.from({ length: 60 }, (_, index) => `line ${index + 1}\n`);
+    const state = { changed: true, after: lines.map(line => line.replace("line", "changed")).join(""), calls: [] as string[] };
     (window as any).state = state;
-    (viewer as any).diff = (path: string) => state.changed && path === "a.ts" ? element : null;
+    (viewer as any).diff = (path: string) => {
+      state.calls.push(path);
+      return state.changed && path === "a.ts" ? { before: lines.join(""), after: state.after } : null;
+    };
     (viewer as any).connection = { list: () => [{ name: "a.ts", type: "file" }, { name: "b.ts", type: "file" }], read: () => "text" };
     (viewer as any).selected = "a.ts";
   });
+  await expect(counts(page)).toHaveText("+60\u221260");
   await expect(diffBody(page)).toBeVisible();
-  await page.locator("tv-code").evaluate(viewer => { (window as any).state.changed = false; (viewer as any).refresh("a.ts"); });
+  const before = await page.locator(".cv-pane-content").evaluate(content => {
+    content.scrollTop = 150;
+    (window as any).container = content.querySelector("diffs-container");
+    return content.scrollTop;
+  });
+  expect(before).toBe(150);
+
+  // A refresh of another file leaves the diff alone; one of the open file updates it.
+  const calls = await page.evaluate(() => (window as any).state.calls.length);
+  await page.locator("tv-code").evaluate(viewer => (viewer as any).refresh("b.ts"));
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => (window as any).state.calls.length)).toBe(calls);
+  await page.locator("tv-code").evaluate(viewer => {
+    (window as any).state.after += "line 61\nline 62\n";
+    (viewer as any).refresh("a.ts");
+  });
+  await expect(counts(page)).toHaveText("+62\u221260");
+  await expect.poll(() => diffLines(page).then(lines => lines.some(([, text]) => text === "line 62"))).toBe(true);
+  const after = await page.locator(".cv-pane-content").evaluate(content => ({
+    scrollTop: content.scrollTop,
+    same: content.querySelector("diffs-container") === (window as any).container,
+  }));
+  expect(after).toEqual({ scrollTop: 150, same: true });
+
+  await page.locator("tv-code").evaluate(viewer => { (window as any).state.changed = false; (viewer as any).refresh(); });
   await expect(page.locator(".cv-code-text")).toHaveText("text");
   await expect(modes(page)).toHaveCount(0);
+  await expect(counts(page)).toHaveCount(0);
   await page.locator("tv-code").evaluate(viewer => { (window as any).state.changed = true; (viewer as any).refresh("a.ts"); });
   await expect(diffBody(page)).toBeVisible();
   // Clearing the property shows the file again.
@@ -189,14 +327,11 @@ test("the pane follows the diff function as the tree changes", async ({ page }) 
   await expect(modes(page)).toHaveCount(0);
 });
 
-test("a busy diff element loads unseen behind the previous content and replaces it once ready", async ({ page }) => {
+test("a diff draws unseen behind the previous content and replaces it once drawn", async ({ page }) => {
   await ready(page);
+  const release = await holdDiffModule(page);
   await page.locator("tv-code").evaluate(viewer => {
-    const element = document.createElement("iframe");
-    element.src = "data:text/html,<p>diff</p>";
-    element.setAttribute("aria-busy", "true");
-    (window as any).element = element;
-    (viewer as any).diff = (path: string) => path === "changed.ts" ? element : null;
+    (viewer as any).diff = (path: string) => path === "changed.ts" ? { before: "old\n", after: "new\n" } : null;
     (viewer as any).connection = {
       list: () => [{ name: "changed.ts", type: "file" }, { name: "same.ts", type: "file" }],
       read: (path: string) => `contents of ${path}`,
@@ -205,46 +340,89 @@ test("a busy diff element loads unseen behind the previous content and replaces 
   });
   await expect(page.locator(".cv-code-text")).toHaveText("contents of same.ts");
   await page.locator('.cv-row[data-path="changed.ts"]').click();
-  // The header moves to the new file at once; the old body stays in view.
+  // The header moves to the new file at once; the old body stays in view, faded.
   await expect(page.locator(".cv-pane-path")).toHaveText("changed.ts");
-  await expectModes(page, ["Source", "Diff"], "Diff");
   await expect(page.locator(".cv-code-text")).toHaveText("contents of same.ts");
   await expect(page.locator(".cv-pane-progress")).toHaveClass(/cv-pane-progress-active/);
-  const pending = await page.locator(".cv-pane-diff").evaluate(wrapper => ({
-    opacity: getComputedStyle(wrapper).opacity,
-    loaded: wrapper.firstElementChild === (window as any).element && !!(window as any).element.contentWindow,
-    size: [wrapper.clientWidth, wrapper.clientHeight],
-    content: [wrapper.parentElement!.clientWidth, wrapper.parentElement!.clientHeight],
-  }));
-  expect(pending.opacity).toBe("0");
-  expect(pending.loaded).toBe(true);
-  expect(pending.size).toEqual(pending.content);
-  await page.evaluate(() => { (window as any).loadedWindow = (window as any).element.contentWindow; });
-
-  await page.evaluate(() => { (window as any).element.removeAttribute("aria-busy"); });
+  await expect(page.locator(".cv-pane-content")).toHaveClass(/cv-pane-faded/);
+  // The first diff waits for the highlighter to start, unseen.
+  const blanks = await recordBlankFrames(page);
+  release();
+  expect(await diffLines(page)).toEqual([["change-deletion", "old"], ["change-addition", "new"]]);
+  expect(await blanks()).toEqual([]);
   await expect(page.locator(".cv-code-text")).toHaveCount(0);
-  await expect(diffBody(page)).toBeVisible();
-  expect(await page.locator(".cv-pane-diff").evaluate(wrapper => getComputedStyle(wrapper).opacity)).toBe("1");
+  await expect(page.locator(".cv-pane-content > *")).toHaveCount(1);
+  expect(await diffBody(page).evaluate(wrapper => getComputedStyle(wrapper).opacity)).toBe("1");
   await expect(page.locator(".cv-pane-progress")).not.toHaveClass(/cv-pane-progress-active/);
   await expect(page.locator(".cv-pane-content")).not.toHaveClass(/cv-pane-faded/);
-  // Revealing keeps the loaded document instead of loading it again.
-  expect(await page.evaluate(() => (window as any).element.contentWindow === (window as any).loadedWindow)).toBe(true);
+  await expectModes(page, ["Source", "Diff"], "Diff");
 });
 
-test("a busy diff opened first shows the loading pane, not the empty state, until it is ready", async ({ page }) => {
+test("a diff opened first shows the loading pane, not the empty state, until it is drawn", async ({ page }) => {
   await ready(page);
+  const release = await holdDiffModule(page);
   await page.locator("tv-code").evaluate(viewer => {
-    const element = document.createElement("iframe");
-    element.src = "data:text/html,<p>diff</p>";
-    element.setAttribute("aria-busy", "true");
-    (window as any).element = element;
-    (viewer as any).diff = () => element;
+    (viewer as any).diff = () => ({ before: "old\n", after: "new\n" });
     (viewer as any).connection = { list: () => [{ name: "changed.ts", type: "file" }, { name: "other.ts", type: "file" }], read: () => "text" };
     (viewer as any).selected = "changed.ts";
   });
-  await expect(page.locator(".cv-pane-diff")).toHaveCount(1);
-  await expect(page.locator(".cv-pane-content > *")).toHaveCount(1);
+  await expect(page.locator(".cv-pane-path")).toHaveText("changed.ts");
   await expect(page.locator(".cv-pane-progress")).toHaveClass(/cv-pane-progress-active/);
-  await page.evaluate(() => { (window as any).element.removeAttribute("aria-busy"); });
+  await expect(page.getByText("No file open")).toHaveCount(0);
+  release();
   await expect(diffBody(page)).toBeVisible();
+  await expect(page.locator(".cv-pane-content > *")).toHaveCount(1);
+});
+
+test("opening one changed file after another keeps a drawn pane in view throughout", async ({ page }) => {
+  await ready(page);
+  await page.locator("tv-code").evaluate(viewer => {
+    const text = (name: string, count: number) => Array.from({ length: count }, (_, index) => `const ${name}${index} = ${index};\n`).join("");
+    (viewer as any).diff = (path: string) => ({ before: text(path[0], 40), after: text(path[0], 45) });
+    (viewer as any).files = ["a.ts", "b.ts", "c.md", "d.py"].map(path => ({ path, content: "", status: "modified" }));
+    (viewer as any).selected = "a.ts";
+  });
+  await expect(diffBody(page)).toBeVisible();
+  const blanks = await recordBlankFrames(page);
+  for (const path of ["b.ts", "c.md", "d.py", "a.ts"]) {
+    await page.locator(`.cv-row[data-path="${path}"]`).click();
+    await expect(counts(page)).toHaveText("+5\u22120");
+    await expect.poll(() => diffLines(page).then(lines => lines.at(-1)?.[1])).toBe(`const ${path[0]}44 = 44;`);
+  }
+  expect(await blanks()).toEqual([]);
+});
+
+test("the diff uses the code font, the pane background and the colour scheme of the element", async ({ page }) => {
+  await ready(page);
+  await page.locator("tv-code").evaluate(viewer => {
+    (viewer as any).diff = () => ({ before: "const a = 1;\n", after: "const a = 2;\n" });
+    (viewer as any).files = { "a.ts": "const a = 2;\n", "b.ts": "" };
+    (viewer as any).selected = "a.ts";
+  });
+  await expect(diffBody(page)).toBeVisible();
+  const look = (scheme: string) => page.locator("tv-code").evaluate(async (viewer, scheme) => {
+    (viewer as HTMLElement).style.colorScheme = scheme;
+    await new Promise(requestAnimationFrame);
+    const root = viewer.querySelector("diffs-container")!.shadowRoot!;
+    const line = root.querySelector("[data-content] > [data-line-type]")!;
+    const keyword = line.querySelector("span")!;
+    const code = getComputedStyle(viewer.querySelector(".cv-pane")!);
+    return {
+      font: [getComputedStyle(line).fontFamily, getComputedStyle(line).fontSize, getComputedStyle(line).lineHeight],
+      codeFont: [code.getPropertyValue("--_font-mono").trim(), code.getPropertyValue("--_code-size").trim(), code.getPropertyValue("--_code-line-height").trim()],
+      background: getComputedStyle(root.querySelector("pre")!).backgroundColor,
+      pane: code.backgroundColor,
+      keyword: getComputedStyle(keyword).color,
+    };
+  }, scheme);
+  const light = await look("light");
+  const dark = await look("dark");
+  for (const scheme of [light, dark]) {
+    expect(scheme.font).toEqual(scheme.codeFont);
+    expect(scheme.background).toBe(scheme.pane);
+  }
+  expect(light.pane).not.toBe(dark.pane);
+  // The GitHub light and dark colours of a keyword.
+  expect(light.keyword).toBe("rgb(215, 58, 73)");
+  expect(dark.keyword).toBe("rgb(249, 117, 131)");
 });

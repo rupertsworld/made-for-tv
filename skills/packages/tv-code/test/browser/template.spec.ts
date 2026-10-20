@@ -98,15 +98,13 @@ test('a status letter and the header of a changed file match their templates', a
   await page.locator('#host').evaluate(host => {
     host.innerHTML = '<tv-code></tv-code>';
     const viewer = host.firstElementChild as any;
-    const element = Object.assign(document.createElement('iframe'), { src: 'data:text/html,diff' });
-    element.dataset.additions = '1';
-    element.dataset.deletions = '0';
-    const readme = Object.assign(document.createElement('iframe'), { src: 'data:text/html,readme' });
-    viewer.diff = (path: string) => path === 'new.ts' ? element : path === 'README.md' ? readme : null;
+    // An added file, and equal versions, which have no counts.
+    const versions: Record<string, object> = { 'new.ts': { after: 'new' }, 'README.md': { before: '# Readme', after: '# Readme' } };
+    viewer.diff = (path: string) => versions[path] ?? null;
     viewer.files = [{ path: 'b.ts', content: 'b' }, { path: 'new.ts', content: 'new', status: 'added' }, { path: 'README.md', content: '# Readme', status: 'modified' }];
   });
   await page.locator('.cv-row[data-path="new.ts"]').click();
-  await expect(page.locator('.cv-pane-diff')).toBeVisible();
+  await expect(page.locator('.cv-pane-diff:not(.cv-pane-diff-pending)')).toBeVisible();
   const shapes = async (selector: string, html: string) => page.evaluate(({ selector, html }) => {
     const shape = (element: Element): unknown => ({
       tag: element.localName,
@@ -131,7 +129,7 @@ test('a status letter and the header of a changed file match their templates', a
   const source = await shapes('.cv-pane-header', reference.source);
   expect(source.actual).toEqual(source.reference);
   await page.locator('.cv-row[data-path="README.md"]').click();
-  await expect(page.locator('.cv-pane-diff')).toBeVisible();
+  await expect(page.locator('.cv-pane-diff:not(.cv-pane-diff-pending)')).toHaveText('No differences');
   const markdown = await shapes('.cv-pane-header', reference.markdown);
   expect(markdown.actual).toEqual(markdown.reference);
 });

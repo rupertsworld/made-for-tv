@@ -1,5 +1,7 @@
 /** File pane: breadcrumbs, actions and one lifecycle for each body kind. */
 import { CodeView } from "./code-view";
+// Only types: the diff module is imported on first use by the element.
+import type { DiffView, FileChange } from "./tv-code-diff";
 import { h, svg } from "./dom";
 import { icons } from "./icons";
 import type { DecodedRead } from "./input";
@@ -32,9 +34,12 @@ export class Pane {
   private wrapped = false;
   private source = false;
   private singleFile = false;
-  /** The diff element offered for the current file, and whether it is the view shown. */
-  private diff: { element: HTMLElement; shown: boolean } | null = null;
-  private countsObserver: MutationObserver | null = null;
+  /** The change of the current file offered as its Diff view, and whether that view is shown. */
+  private diff: { change: FileChange; shown: boolean } | null = null;
+  /** The diff in the content area, shown as the body of the current or previous file. */
+  private diffBody: DiffView | null = null;
+  /** A diff drawing unseen over the content it will replace. */
+  private pendingDiff: { view: DiffView; wrapper: HTMLElement } | null = null;
   onRetry?: () => void;
   onReveal?: (path: string) => void;
   onLinesChange?: (lines: LineRange | null) => void;
@@ -57,8 +62,10 @@ export class Pane {
 
   /** Whether the last successfully displayed body belongs to this path. */
   hasBodyFor(path: string): boolean { return this.contentPath === path && this.result !== null; }
-  /** The diff element offered for the current file, or null. */
-  get diffElement(): HTMLElement | null { return this.diff?.element ?? null; }
+  /** Whether the current file offers a Diff view. */
+  get hasDiff(): boolean { return this.diff !== null; }
+  /** Whether the Diff view of the current file is the view chosen. */
+  get diffShown(): boolean { return this.diff?.shown ?? false; }
   /** Whether the current path has been marked as removed. */
   get isDeleted(): boolean { return this.deleted; }
   /** Whether a Markdown image depends on a changed file. */
@@ -77,9 +84,8 @@ export class Pane {
   /** Release timers, highlights and object URLs when disconnected. */
   destroy(): void {
     if (this.fadeTimer) clearTimeout(this.fadeTimer);
-    this.lineObserver?.disconnect();
-    this.body?.destroy();
-    this.body = null;
+    this.discardPendingDiff();
+    this.clearBody();
   }
 
   /** Set the repository label in the breadcrumb. */
@@ -109,52 +115,55 @@ export class Pane {
   setShowSource(value: boolean): void { this.source = value; this.renderActions(); }
 
   /**
-   * Offer a diff of the current file as a view mode. When it is the view
-   * shown, the element fills the content area until a file body is shown.
-   * While it is `aria-busy`, it loads unseen over the content already shown,
-   * so the pane never shows an empty frame.
+   * Offer a change of the current file as its Diff view, or none. When the
+   * Diff view is shown, a diff of this file already in the content area
+   * draws the change in place. Otherwise a new diff draws unseen over the
+   * content already shown, which keeps its fade and progress bar, and
+   * replaces it once drawn, so the pane never shows an empty diff.
    */
-  setDiff(element: HTMLElement | null, shown: boolean): void {
-    if (element !== this.diff?.element) {
-      this.countsObserver?.disconnect();
-      this.countsObserver = null;
-      if (element) {
-        this.countsObserver = new MutationObserver(() => {
-          this.renderPath();
-          if (this.diff?.element === element && this.diff.shown && element.parentElement?.classList.contains("cv-pane-diff-pending")) this.setDiff(element, true);
-        });
-        this.countsObserver.observe(element, { attributeFilter: ["data-additions", "data-deletions", "aria-busy"] });
-      }
-    }
-    this.diff = element ? { element, shown } : null;
-    if (element && shown) {
-      // Moving an iframe reloads it, so the element keeps its wrapper.
-      const current = element.parentElement?.classList.contains("cv-pane-diff") && element.parentElement.parentElement === this.content ? element.parentElement : null;
-      const wrapper = current ?? h("div", { className: "cv-pane-diff" }, element);
-      // Only a diff that is not in view yet waits; one already shown stays shown.
-      const busy = (!current || current.classList.contains("cv-pane-diff-pending")) && element.getAttribute("aria-busy") === "true";
-      wrapper.classList.toggle("cv-pane-diff-pending", busy);
-      if (!current) this.content.append(wrapper);
-      if (busy) {
-        // With no file shown to keep, such as the empty state, the pane shows only its progress.
-        if (this.contentPath === null) for (const child of [...this.content.children]) if (child !== wrapper) child.remove();
-        this.renderPath();
-        this.renderActions();
-        return;
-      }
-      if (this.fadeTimer) clearTimeout(this.fadeTimer);
-      this.fadeTimer = null;
-      this.progress.classList.remove("cv-pane-progress-active");
-      this.content.classList.remove("cv-pane-faded");
-      this.notice.replaceChildren();
-      this.clearBody();
-      this.result = null;
-      this.deleted = false;
-      this.contentPath = this.currentPath;
-      for (const child of [...this.content.children]) if (child !== wrapper) child.remove();
+  setDiff(diff: { change: FileChange; createView: (onDrawn: () => void) => DiffView } | null, shown: boolean): void {
+    this.diff = diff ? { change: diff.change, shown } : null;
+    if (!diff || !shown) this.discardPendingDiff();
+    else if (this.diffBody && this.contentPath === this.currentPath) this.diffBody.show(diff.change);
+    else if (this.pendingDiff) this.pendingDiff.view.show(diff.change);
+    else {
+      // A failure shown in place of content is not kept.
+      if (this.contentPath === null) this.content.replaceChildren();
+      const view = diff.createView(() => this.revealDiff(view));
+      const wrapper = h("div", { className: "cv-pane-diff cv-pane-diff-pending" }, view.element);
+      this.pendingDiff = { view, wrapper };
+      this.content.append(wrapper);
+      view.show(diff.change);
     }
     this.renderPath();
     this.renderActions();
+  }
+
+  /** Replace the content with a pending diff once it has drawn. */
+  private revealDiff(view: DiffView): void {
+    const pending = this.pendingDiff;
+    if (pending?.view !== view) return;
+    this.pendingDiff = null;
+    if (this.fadeTimer) clearTimeout(this.fadeTimer);
+    this.fadeTimer = null;
+    this.progress.classList.remove("cv-pane-progress-active");
+    this.content.classList.remove("cv-pane-faded");
+    this.notice.replaceChildren();
+    this.clearBody();
+    this.diffBody = view;
+    this.result = null;
+    this.deleted = false;
+    this.contentPath = this.currentPath;
+    pending.wrapper.classList.remove("cv-pane-diff-pending");
+    for (const child of [...this.content.children]) if (child !== pending.wrapper) child.remove();
+    this.renderPath();
+    this.renderActions();
+  }
+
+  private discardPendingDiff(): void {
+    this.pendingDiff?.view.destroy();
+    this.pendingDiff?.wrapper.remove();
+    this.pendingDiff = null;
   }
 
   /** Show an immediate new header and keep old content during a pending read. */
@@ -164,11 +173,14 @@ export class Pane {
     this.currentPath = path;
     this.entry = null;
     this.result = null;
-    this.clearDiff();
+    this.diff = null;
+    this.discardPendingDiff();
     this.deleted = false;
     this.renderPath();
     this.renderActions();
     this.notice.replaceChildren();
+    // With no file shown to keep, such as the empty state, the pane shows only its progress.
+    if (this.contentPath === null) { this.clearBody(); this.content.replaceChildren(); }
     this.progress.classList.add("cv-pane-progress-active");
     this.content.classList.remove("cv-pane-faded");
     if (this.fadeTimer) clearTimeout(this.fadeTimer);
@@ -287,7 +299,8 @@ export class Pane {
     this.fadeTimer = null;
     this.currentPath = null;
     this.entry = null;
-    this.clearDiff();
+    this.diff = null;
+    this.discardPendingDiff();
     this.deleted = false;
     this.contentPath = null;
     this.result = null;
@@ -305,14 +318,8 @@ export class Pane {
         h("kbd", { text: shortcut }), h("kbd", { text: "P" }))));
   }
 
-  private clearDiff(): void {
-    this.countsObserver?.disconnect();
-    this.countsObserver = null;
-    this.diff = null;
-  }
-
   private replaceBody(element: HTMLElement, body: CodeView | MarkdownView | ImageView | null = null): void {
-    if (this.body !== body) this.clearBody();
+    if (this.body !== body || this.diffBody) this.clearBody();
     this.body = body;
     if (this.content.firstChild !== element) this.content.replaceChildren(element);
   }
@@ -321,6 +328,8 @@ export class Pane {
     this.lineObserver = null;
     this.body?.destroy();
     this.body = null;
+    this.diffBody?.destroy();
+    this.diffBody = null;
     this.codeLanguageId = null;
   }
 
@@ -340,11 +349,12 @@ export class Pane {
       separate(crumb(segment, folder));
     }
     if (path) separate(h("strong", { className: "cv-path-file", text: segments.at(-1) ?? "" }));
-    const counts = this.diff?.element.dataset;
-    if (counts?.additions !== undefined && counts.deletions !== undefined) {
+    // Equal versions have no counts.
+    const change = this.diff?.change;
+    if (change?.metadata) {
       parts.push(h("span", { className: "cv-diff-counts" },
-        h("span", { className: "cv-diff-additions", text: `+${counts.additions}` }),
-        h("span", { className: "cv-diff-deletions", text: `\u2212${counts.deletions}` })));
+        h("span", { className: "cv-diff-additions", text: `+${change.additions}` }),
+        h("span", { className: "cv-diff-deletions", text: `\u2212${change.deletions}` })));
     }
     if (this.deleted) parts.push(h("span", { className: "cv-deleted", text: "Deleted" }));
     this.pathArea.replaceChildren(...parts);

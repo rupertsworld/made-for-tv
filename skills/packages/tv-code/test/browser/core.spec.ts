@@ -14,13 +14,14 @@ async function setFiles(page: Page, files: object): Promise<void> {
 
 const row = (page: Page, path: string) => page.locator('tv-code .cv-row').filter({ has: page.locator(`.cv-row-name:text-is("${path.split("/").at(-1)}")`) });
 
-test("ships package and grammar notices for the bundled highlighter and Markdown renderer", () => {
+test("ships package, grammar and theme notices for the bundled highlighter, Markdown renderer and diff module", () => {
   const notices = readFileSync("packages/tv-code/dist/THIRD-PARTY-NOTICES.txt", "utf8");
   const packages = [
+    "@pierre/diffs", "@pierre/theming",
     "@shikijs/core", "@shikijs/engine-javascript", "@shikijs/langs",
-    "@shikijs/primitive", "@shikijs/types", "@shikijs/vscode-textmate",
+    "@shikijs/primitive", "@shikijs/themes", "@shikijs/transformers", "@shikijs/types", "@shikijs/vscode-textmate",
     "ccount", "character-entities-html4", "character-entities-legacy",
-    "comma-separated-tokens", "dompurify", "hast-util-to-html",
+    "comma-separated-tokens", "diff", "dompurify", "hast-util-to-html",
     "hast-util-whitespace", "html-void-elements", "marked", "oniguruma-parser",
     "oniguruma-to-es", "property-information", "regex", "regex-recursion",
     "regex-utilities", "shiki", "space-separated-tokens", "stringify-entities",
@@ -48,7 +49,9 @@ test("ships package and grammar notices for the bundled highlighter and Markdown
   expect(notices).toMatch(/^yaml\nLicense: TextMate bundle licence$/m);
   expect(notices).toContain("Permission to copy, use, modify, sell and distribute this");
   expect(notices).toMatch(/^glsl\nLicense: None stated by the source repository$/m);
-  expect(notices).not.toContain("BUNDLED TEXTMATE THEMES");
+  // The diff module bundles only the two themes it uses.
+  const themeSection = notices.split("BUNDLED TEXTMATE THEMES (2)")[1];
+  expect([...themeSection.matchAll(/^-{80}\n([^\n]+)\nLicense: /gm)].map(match => match[1])).toEqual(["github-dark", "github-light"]);
 });
 
 test("child tags show nested relative paths, dedented scripts and live edits", async ({ page }) => {

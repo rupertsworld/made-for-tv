@@ -27,6 +27,7 @@
     "jsdom": "^27.0.0",
     "storybook": "10.6.0",
     "tm-grammars": "1.32.22",
+    "tm-themes": "1.12.12",
     "typescript": "5.9.3",
     "vite": "6.4.3",
     "vitest": "4.1.11"

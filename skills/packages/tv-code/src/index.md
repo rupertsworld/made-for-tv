@@ -18,6 +18,8 @@ Copy `tv-code.js` and `tv-code.css` from this skill folder next to the artifact 
 <script type="module" src="./tv-code.js"></script>
 ```
 
+To show diffs (see [Optional: show changes](#optional-show-changes)), also copy `tv-code-diff.js` into the same folder. The element loads it from beside `tv-code.js` the first time it shows a diff, and a page without diffs never loads it. Keep the file names as they are.
+
 For a Television artifact, also load the canonical stylesheet and components as the `television` skill describes; the element then follows the active theme. The element is `100dvh` tall by default, which suits an artifact that shows only the viewer. Remove the body margin:
 
 ```css
@@ -116,11 +118,15 @@ If the environment documents no way to learn about changes, the view shows the f
 
 To show how the files differ from another version, such as another branch, give changed entries a `status` of `"added"`, `"modified"` or `"removed"` in `files` or in `list` results. The tree shows `A`, `M` or `D` after the name. Include removed files in the listing so the reader can open them, and read them from the other version.
 
-To show the diff of a changed file, assign `diff`: a function from a path to an element showing its changes, such as an iframe with a diff view, or `null` for an unchanged file. The header's view toggle gains **Diff**, selected when the file opens, beside Preview and Source. Set `data-additions` and `data-deletions` on the element to show the line counts after the file name. Set `aria-busy="true"` on it until it has drawn, and the pane keeps showing what it showed before instead of an empty frame. Return the same element while the diff is the same; the element calls `diff` again when the tree changes, so it follows a status that changes on `refresh`.
+To show the diff of a changed file, assign `diff`: a function from a path to the two versions of the file, `{ before, after }`, or `null` for an unchanged file. It may be async. The element compares the versions, draws the diff and counts the added and removed lines itself. Leave out a version, or set it to `null`, for a file that does not exist on that side; it counts as empty, so an added file shows every line added. The view toggle in the header gains **Diff**, selected when the file opens, beside Preview and Source, and the counts follow the file name.
 
 ```js
-viewer.diff = path => changes.has(path) ? diffFrameFor(path) : null;
+viewer.diff = async path => changes.has(path)
+  ? { before: await textAt(oldUrl(path)), after: await textAt(newUrl(path)) }
+  : null;
 ```
+
+The element calls `diff` again when a refresh covers the open file, so a diff stays current when you call `refresh(path)` for changes on either side. A function that throws counts as no diff.
 
 ## Optional: share the open file in the address
 
@@ -151,7 +157,7 @@ viewer.addEventListener("select", ({ detail }) => {
 | `dim` | attribute | Name patterns shown dimmed, separated by spaces or commas, with `*` as a wildcard. Default: `.* node_modules dist build out coverage target __pycache__ .venv venv vendor`. Add your own build folders. |
 | `files` | property | All files at once. |
 | `connection` | property | `{ list?, read }` functions for files on demand. Omit `list` to show the file named by `selected`. |
-| `diff` | property | `path => element \| null`, or a promise of one. The element is the file's Diff view mode, selected by default; its `data-additions` and `data-deletions` show in the header. |
+| `diff` | property | `path => ({ before, after }) \| null`, or a promise of one: the text of a changed file before and after, a missing side being empty. Shown as the Diff view mode of the file, selected by default, with the added and removed line counts in the header. Needs `tv-code-diff.js`. |
 | `status` | entry field | `"added"`, `"modified"` or `"removed"` in `files` and `list` entries, shown as `A`, `M` or `D` in the tree. |
 | `refresh(path?)` | method | Fetch through the connection again, for one changed path or for everything. |
 | `select` | event | The reader opened a file or changed the line selection. `detail` is `{ path, lines }`. Not sent when your script sets `selected` or `lines`. |
