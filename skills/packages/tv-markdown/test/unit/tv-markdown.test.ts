@@ -123,6 +123,23 @@ describe('heading ids', () => {
 });
 
 describe('footnotes', () => {
+  it('keeps a citation in link text outside the link with superscript and accessibility metadata', () => {
+    for (const source of ['[Claim[^a]](x)', '[*Claim[^a]*](x)']) {
+      const element = render(`${source}\n\n[^a]: Note.`);
+      const paragraph = element.querySelector('p')!;
+      const link = paragraph.querySelector<HTMLAnchorElement>('a[href="x"]')!;
+      const reference = paragraph.querySelector<HTMLAnchorElement>('sup > a[data-footnote-ref]')!;
+      const heading = element.querySelector('section[data-footnotes] > h2')!;
+      expect(link.textContent).toBe('Claim');
+      expect(link.contains(reference)).toBe(false);
+      expect(reference?.textContent).toBe('1');
+      expect(reference?.getAttribute('aria-describedby')).toBe(heading.id);
+      expect(reference?.getAttribute('href')).toBe(`#${element.querySelector('section[data-footnotes] > ol > li')?.id}`);
+      expect(reference.closest('sup')?.parentElement).toBe(paragraph);
+      expect(paragraph.querySelectorAll('a')).toHaveLength(2);
+    }
+  });
+
   it('numbers only rendered citations when an unused definition cites another note', () => {
     const element = render(`Visible.[^shown]
 

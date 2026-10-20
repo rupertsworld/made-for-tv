@@ -81,7 +81,7 @@ export class TvCodeElement extends HTMLElement {
     };
     this.loader.onRefreshComplete = (paths, all) => {
       const open = this.selectedValue;
-      if (open && this.diffValue && (all || paths.includes(open))) void this.refreshDiff(open);
+      if (open && this.diffValue && this.model.get(open)?.type === "file" && (all || paths.includes(open))) void this.refreshDiff(open);
       if (all) return; // Re-reading the open Markdown file already resolves its images.
       for (const path of paths) if (this.pane?.referencesImage(path)) this.pane.reloadImage(path);
     };
@@ -366,6 +366,7 @@ export class TvCodeElement extends HTMLElement {
     }
     if (path && this.activeInput === "connection" && this.model.get(parentPath(path))?.listing === "listed" && !this.model.get(path) && this.selectedWasKnown) {
       this.readEpoch++;
+      this.diffRequest++;
       this.pane?.markDeleted();
     }
     if (path && this.model.get(path)?.type === "file" && this.pane?.isDeleted && !this.loader.isRefreshing) {
@@ -378,10 +379,11 @@ export class TvCodeElement extends HTMLElement {
 
   /** Ask the page again after a refresh and apply only its latest answer. */
   private async refreshDiff(path: string): Promise<void> {
+    if (this.model.get(path)?.type !== "file") return;
     const epoch = this.inputEpoch;
     const request = ++this.diffRequest;
     const diff = await this.diffFor(path);
-    if (epoch !== this.inputEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane) return;
+    if (epoch !== this.inputEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane || this.model.get(path)?.type !== "file") return;
     const wasShown = this.pane.diffShown;
     const shown = this.applyComparison(path, diff);
     if (shown) ++this.readEpoch;
@@ -390,9 +392,13 @@ export class TvCodeElement extends HTMLElement {
 
   /** Show a view using the last accepted comparison, without calling the page. */
   private showHeldView(path: string): void {
+    if (this.pane?.isDeleted && !this.model.get(path)) return;
     const epoch = ++this.readEpoch;
     const diff = this.currentDiff?.path === path ? this.currentDiff.result : null;
-    if (!this.applyComparison(path, diff)) void this.readFile(path, epoch);
+    if (!this.applyComparison(path, diff)) {
+      this.pane?.startRead();
+      void this.readFile(path, epoch);
+    }
   }
 
   /** Apply one accepted comparison and set whether refresh should read the file. */
@@ -500,13 +506,15 @@ export class TvCodeElement extends HTMLElement {
   }
 
   private async loadFile(path: string, retry = false, showAnyway = false): Promise<void> {
+    if (this.pane?.isDeleted && !this.model.get(path)) return;
     const epoch = ++this.readEpoch;
     const input = this.inputEpoch;
     const request = ++this.diffRequest;
     if (this.diffValue || this.pane?.hasDiff) {
       // A file shown as its diff is not read.
       const diff = await this.diffFor(path);
-      if (input !== this.inputEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane) return;
+      if (input !== this.inputEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane ||
+        (this.pane.isDeleted && !this.model.get(path))) return;
       if (this.applyComparison(path, diff)) return;
     }
     else this.applyComparison(path, null);
@@ -532,7 +540,8 @@ export class TvCodeElement extends HTMLElement {
         catch (error) { result = readFailure(error); }
       } else result = entry?.src ? { kind: "binary" } : { kind: "failure", message: "File has no content" };
     }
-    if (!result || epoch !== this.readEpoch || this.selectedValue !== path) return;
+    if (!result || epoch !== this.readEpoch || this.selectedValue !== path ||
+      (this.pane?.isDeleted && !this.model.get(path))) return;
     if (result.kind === "failure" && result.status === 404) {
       if (this.selectedWasKnown) this.pane?.markDeleted();
       else this.pane?.show({ kind: "failure", message: "File not found" });

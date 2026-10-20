@@ -51,7 +51,8 @@ export function renderMarkdown(source: string): DocumentFragment {
     renderer: {
       link(token): string {
         const title = token.title == null ? '' : ` title="${escapeHtml(token.title)}"`;
-        return `<a href="${escapeHtml(token.href)}"${title}>${this.parser.parseInline(token.tokens)}</a>`;
+        const open = `<a href="${escapeHtml(token.href)}"${title}>`;
+        return linkAroundCitations(this.parser.parseInline(token.tokens), open, footnotePrefix);
       },
       image(token): string {
         const title = token.title == null ? '' : ` title="${escapeHtml(token.title)}"`;
@@ -165,6 +166,32 @@ export function renderMarkdown(source: string): DocumentFragment {
     placeholder.setAttribute('role', 'link');
   });
   return fragment;
+}
+
+/** Split a Markdown link around generated citation links, including those inside emphasis. */
+function linkAroundCitations(content: string, open: string, prefix: string): string {
+  if (!content.includes(`${prefix}ref-`)) return `${open}${content}</a>`;
+  const template = document.createElement('template');
+  template.innerHTML = content;
+  const citations = [...template.content.querySelectorAll<HTMLAnchorElement>(`sup > a[id^="${prefix}ref-"]`)]
+    .map(anchor => anchor.parentElement!);
+  if (!citations.length) return `${open}${content}</a>`;
+  const range = document.createRange();
+  range.setStart(template.content, 0);
+  const linked = (fragment: DocumentFragment): string => {
+    if (!fragment.textContent && !fragment.querySelector('img, br, hr, input, svg')) return '';
+    const holder = document.createElement('div');
+    holder.append(fragment);
+    return holder.innerHTML ? `${open}${holder.innerHTML}</a>` : '';
+  };
+  let output = '';
+  for (const citation of citations) {
+    range.setEndBefore(citation);
+    output += linked(range.cloneContents()) + citation.outerHTML;
+    range.setStartAfter(citation);
+  }
+  range.setEnd(template.content, template.content.childNodes.length);
+  return output + linked(range.cloneContents());
 }
 
 function escapeHtml(text: string): string {

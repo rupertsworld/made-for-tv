@@ -123,6 +123,7 @@ export class Pane {
    */
   setDiff(diff: { change: FileChange; createView: (onDrawn: () => void) => DiffView } | null, shown: boolean): void {
     this.diff = diff ? { change: diff.change, shown } : null;
+    if (shown) this.deleted = false;
     if (!diff || !shown) this.discardPendingDiff();
     else if (this.diffBody && this.contentPath === this.currentPath) {
       this.diffBody.show(diff.change);
@@ -205,11 +206,16 @@ export class Pane {
     this.notice.replaceChildren();
     // With no file shown to keep, such as the empty state, the pane shows only its progress.
     if (this.contentPath === null) { this.clearBody(); this.content.replaceChildren(); }
+    this.startRead();
+    this.content.scrollTop = 0;
+  }
+
+  /** Keep the previous body visible while another view of this file is read. */
+  startRead(): void {
     this.progress.classList.add("cv-pane-progress-active");
     this.content.classList.remove("cv-pane-faded");
     if (this.fadeTimer) clearTimeout(this.fadeTimer);
     this.fadeTimer = setTimeout(() => this.content.classList.add("cv-pane-faded"), 200);
-    this.content.scrollTop = 0;
   }
 
   /** Complete a first load, including an error shown in place of content. */
@@ -218,7 +224,7 @@ export class Pane {
   update(result: DecodedRead): void {
     if (result.kind === "failure") {
       if (result.status === 404) this.markDeleted();
-      else this.showRefreshFailure(result.message);
+      else { this.finishLoading(); this.showRefreshFailure(result.message); }
       return;
     }
     this.display(result, true);

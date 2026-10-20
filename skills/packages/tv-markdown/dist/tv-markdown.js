@@ -3421,7 +3421,8 @@ function renderMarkdown(source) {
     renderer: {
       link(token) {
         const title = token.title == null ? "" : ` title="${escapeHtml(token.title)}"`;
-        return `<a href="${escapeHtml(token.href)}"${title}>${this.parser.parseInline(token.tokens)}</a>`;
+        const open = `<a href="${escapeHtml(token.href)}"${title}>`;
+        return linkAroundCitations(this.parser.parseInline(token.tokens), open, footnotePrefix);
       },
       image(token) {
         const title = token.title == null ? "" : ` title="${escapeHtml(token.title)}"`;
@@ -3533,6 +3534,29 @@ function renderMarkdown(source) {
     placeholder.setAttribute("role", "link");
   });
   return fragment;
+}
+function linkAroundCitations(content, open, prefix) {
+  if (!content.includes(`${prefix}ref-`)) return `${open}${content}</a>`;
+  const template = document.createElement("template");
+  template.innerHTML = content;
+  const citations = [...template.content.querySelectorAll(`sup > a[id^="${prefix}ref-"]`)].map((anchor) => anchor.parentElement);
+  if (!citations.length) return `${open}${content}</a>`;
+  const range = document.createRange();
+  range.setStart(template.content, 0);
+  const linked = (fragment) => {
+    if (!fragment.textContent && !fragment.querySelector("img, br, hr, input, svg")) return "";
+    const holder = document.createElement("div");
+    holder.append(fragment);
+    return holder.innerHTML ? `${open}${holder.innerHTML}</a>` : "";
+  };
+  let output = "";
+  for (const citation of citations) {
+    range.setEndBefore(citation);
+    output += linked(range.cloneContents()) + citation.outerHTML;
+    range.setStartAfter(citation);
+  }
+  range.setEnd(template.content, template.content.childNodes.length);
+  return output + linked(range.cloneContents());
 }
 function escapeHtml(text2) {
   return text2.replace(/[&<>"']/g, (character) => ({
