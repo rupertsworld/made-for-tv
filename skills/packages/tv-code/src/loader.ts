@@ -22,6 +22,8 @@ export class Loader {
   get isRefreshing(): boolean { return this.refreshing; }
   /** Called after a refresh read of the current open file. */
   onRefreshRead?: (path: string, result: DecodedRead) => void;
+  /** When supplied, the open-file coordinator owns the refresh read. */
+  refreshOpenFile?: (path: string) => Promise<void>;
   /** Called after a refresh round has applied its folder listings. */
   onRefreshComplete?: (paths: string[], all: boolean) => void;
 
@@ -183,10 +185,13 @@ export class Loader {
         const path = this.openFile;
         if (missingOpen && path && this.model.get(path)?.type === "file") readOpen = true;
         if (readOpen && path && this.model.get(path)?.type === "file") {
-          const kind = fileKind(path);
-          const result = kind === "image" && this.model.get(path)?.src ? { kind: "binary" } as DecodedRead :
-            await this.read(path, kind === "image" ? "bytes" : "text", false, true);
-          if (result && generation === this.generation && this.openFile === path) this.onRefreshRead?.(path, result);
+          if (this.refreshOpenFile) await this.refreshOpenFile(path);
+          else {
+            const kind = fileKind(path);
+            const result = kind === "image" && this.model.get(path)?.src ? { kind: "binary" } as DecodedRead :
+              await this.read(path, kind === "image" ? "bytes" : "text", false, true);
+            if (result && generation === this.generation && this.openFile === path) this.onRefreshRead?.(path, result);
+          }
         }
         if (generation === this.generation) this.onRefreshComplete?.(paths, all);
       } while (generation === this.generation && (this.refreshAll || this.refreshPaths.size > 0));

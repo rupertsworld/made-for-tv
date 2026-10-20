@@ -3,6 +3,8 @@ import { decodeRead, fromChildTags, fromFiles, maximumBytes, readFailure, type D
 import { Loader } from "./loader";
 import { decodeAddress, formatLines, normalizePath, parentPath, parseLineFragment, parseLines, resolvePath } from "./paths";
 import { Pane } from "./pane";
+import { OpenFile } from "./open-file";
+import type { Comparison, PaneState } from "./pane-state";
 import { PreferenceStore } from "./preferences";
 import { Sidebar } from "./sidebar";
 import { TreeModel } from "./tree-model";
@@ -13,7 +15,6 @@ import { detectLanguage, fileKind } from "./languages";
 import { highlightElement } from "./highlight";
 import type { ImageSource } from "./media-view";
 import { LinkClickEvent } from "tv-markdown";
-import type { DiffView, FileChange } from "./tv-code-diff";
 
 /**
  * The diff module and @pierre/diffs, imported the first time a page gives the
@@ -34,8 +35,6 @@ function loadDiffModule(): Promise<typeof import("./tv-code-diff")> {
   }
   return diffModule;
 }
-
-type DiffResult = { change: FileChange; createView: (onDrawn: () => void) => DiffView } | { loadFailed: true } | null;
 
 /** The view element; it never owns persistence or transport details. */
 export class TvCodeElement extends HTMLElement {
@@ -58,8 +57,6 @@ export class TvCodeElement extends HTMLElement {
   private pageSelected = false;
   private pendingRestore = false;
   private inputEpoch = 0;
-  private readEpoch = 0;
-  private diffRequest = 0;
   private autoOpened = false;
   private reflecting = false;
   private selectedWasKnown = false;
@@ -70,18 +67,26 @@ export class TvCodeElement extends HTMLElement {
   private warmed = false;
   private pendingHeading: { path: string; fragment: string } | null = null;
   private diffValue: DiffFunction | null = null;
-  private currentDiff: { path: string; result: DiffResult } | null = null;
-  /** The open file for which the reader chose another view than its diff. */
-  private diffLeftFor: string | null = null;
+  private openFile = new OpenFile({
+    read: (path, retry, showAnyway) => this.readOpenFile(path, retry, showAnyway),
+    compare: path => this.compareFile(path),
+    hasComparison: () => !!this.diffValue,
+    known: () => this.selectedWasKnown,
+    changed: state => this.renderOpenFile(state),
+    readSucceeded: () => {
+      const path = this.selectedValue;
+      if (path && this.model.get(path)?.type === "file") this.selectedWasKnown = true;
+      if (path) this.pane?.setEntry(this.model.get(path) ?? null);
+      this.revealHeading();
+    },
+  });
 
   constructor() {
     super();
-    this.loader.onRefreshRead = (path, result) => {
-      if (path === this.selectedValue) { this.pane?.setEntry(this.model.get(path) ?? null); this.pane?.update(result); }
-    };
+    this.loader.refreshOpenFile = path => this.openFile.refreshRead(path);
     this.loader.onRefreshComplete = (paths, all) => {
       const open = this.selectedValue;
-      if (open && this.diffValue && this.model.get(open)?.type === "file" && (all || paths.includes(open))) void this.refreshDiff(open);
+      if (open && this.model.get(open)?.type === "file" && (all || paths.includes(open))) this.openFile.refreshComparison();
       if (all) return; // Re-reading the open Markdown file already resolves its images.
       for (const path of paths) if (this.pane?.referencesImage(path)) this.pane.reloadImage(path);
     };
@@ -109,7 +114,7 @@ export class TvCodeElement extends HTMLElement {
   get diff(): DiffFunction | null { return this.diffValue; }
   set diff(value: DiffFunction | null | undefined) {
     this.diffValue = value ?? null;
-    if (this.selectedValue) void this.loadFile(this.selectedValue);
+    if (this.selectedValue) this.openFile.comparisonChanged();
   }
 
   /** The currently open file path, or null when no file is open. */
@@ -175,14 +180,14 @@ export class TvCodeElement extends HTMLElement {
     this.pane = pane;
     sidebar.setLabel(this.getAttribute("label") || "Files");
     pane.onReveal = path => { sidebar.open(); void sidebar.reveal(path, true); };
-    pane.onRetry = () => { if (this.selectedValue) void this.loadFile(this.selectedValue, true); };
-    pane.onShowAnyway = () => { if (this.selectedValue) void this.loadFile(this.selectedValue, true, true); };
+    pane.onRetry = () => this.openFile.retry();
+    pane.onShowAnyway = () => this.openFile.retry(true);
+    pane.onDiffDrawn = ticket => this.openFile.drawn(ticket);
     pane.onToggleWrap = () => this.toggleWrap();
     pane.onFind = () => this.openFinder();
     pane.onViewMode = mode => {
       const path = this.selectedValue;
       if (!path) return;
-      this.diffLeftFor = mode === "diff" ? null : path;
       const source = mode === "source";
       // Choosing Preview or Source changes the remembered choice, as the two-way toggle does.
       if (mode !== "diff" && (fileKind(path) === "markdown" || path.toLowerCase().endsWith(".svg")) && source !== this.showSource) {
@@ -192,7 +197,7 @@ export class TvCodeElement extends HTMLElement {
         this.pane?.setShowSource(source);
         this.preferences.set("showSource", source);
       }
-      this.showHeldView(path);
+      this.openFile.mode(mode);
     };
     pane.onToggleSource = () => { this.showSource = !this.showSource; this.preferences.set("showSource", this.showSource); };
     pane.onLinesChange = lines => this.setLines(formatLines(lines), true, false);
@@ -201,6 +206,7 @@ export class TvCodeElement extends HTMLElement {
     pane.hasImage = (path, signal) => this.hasImage(path, signal);
     pane.setWrap(this.wrap);
     pane.setShowSource(this.showSource);
+    pane.render(this.openFile.state);
     const finder = new Finder({
       files: () => this.finderFiles(),
       recent: () => this.recentPaths,
@@ -232,7 +238,7 @@ export class TvCodeElement extends HTMLElement {
 
   disconnectedCallback(): void {
     this.inputEpoch++;
-    this.readEpoch++;
+    this.openFile.close();
     this.pendingHeading = null;
     this.observer?.disconnect();
     this.observer = null;
@@ -261,7 +267,7 @@ export class TvCodeElement extends HTMLElement {
     else if (name === "wrap") this.pane?.setWrap(value !== null);
     else if (name === "show-source") {
       this.pane?.setShowSource(value !== null);
-      if (this.selectedValue) { this.diffLeftFor = this.selectedValue; this.showHeldView(this.selectedValue); }
+      if (this.selectedValue) this.openFile.mode(value !== null ? "source" : "preview");
     }
   }
 
@@ -285,7 +291,6 @@ export class TvCodeElement extends HTMLElement {
   private applyInput(): void {
     if (!this.app) return;
     const epoch = ++this.inputEpoch;
-    this.readEpoch++;
     this.autoOpened = false;
     this.finderPending = 0;
     this.finderDiscovery = null;
@@ -316,7 +321,7 @@ export class TvCodeElement extends HTMLElement {
         if (previous) {
           this.selectedWasKnown = true;
           this.pane?.setEntry(this.model.get(previous) ?? null);
-          void this.loadFile(previous);
+          this.openFile.open(previous, this.openFile.state.mode);
         }
         return;
       }
@@ -324,7 +329,7 @@ export class TvCodeElement extends HTMLElement {
         if (epoch !== this.inputEpoch || this.activeInput !== "connection") return;
         if (previous && this.selectedValue === previous) {
           void this.sidebar?.reveal(previous);
-          if (this.model.get(parentPath(previous))?.listing !== "listed" || this.model.get(previous)) void this.loadFile(previous);
+          if (this.model.get(parentPath(previous))?.listing !== "listed" || this.model.get(previous)) this.openFile.open(previous, this.openFile.state.mode);
         } else if (remembered && !this.selectedValue && !this.pageSelected) {
           await this.sidebar?.reveal(remembered);
           if (epoch !== this.inputEpoch) return;
@@ -345,10 +350,10 @@ export class TvCodeElement extends HTMLElement {
       this.selectedWasKnown = true;
       this.pane?.setEntry(this.model.get(previous) ?? null);
       this.sidebar?.setSelected(previous);
-      void this.loadFile(previous);
+      this.openFile.open(previous, this.openFile.state.mode);
     }
-    else if (previous && this.selectedWasKnown) { this.readEpoch++; this.pane?.markDeleted(); }
-    else if (previous) { this.pane?.start(previous); this.pane?.show({ kind: "failure", message: "File not found" }); }
+    else if (previous && this.selectedWasKnown) this.openFile.deleted();
+    else if (previous) this.openFile.open(previous, this.openFile.state.mode);
     else if (remembered && this.model.get(remembered)?.type === "file") this.openAutomatically(remembered, this.preferences.get("lines"));
     else if (singleFile) this.openAutomatically(files[0].path);
     else this.maybeOpenReadme();
@@ -365,72 +370,44 @@ export class TvCodeElement extends HTMLElement {
       this.pane?.setEntry(openEntry);
     }
     if (path && this.activeInput === "connection" && this.model.get(parentPath(path))?.listing === "listed" && !this.model.get(path) && this.selectedWasKnown) {
-      this.readEpoch++;
-      this.diffRequest++;
-      this.pane?.markDeleted();
+      this.openFile.deleted();
     }
-    if (path && this.model.get(path)?.type === "file" && this.pane?.isDeleted && !this.loader.isRefreshing) {
+    if (path && this.model.get(path)?.type === "file" && this.openFile.state.view.kind === "deleted" && !this.loader.isRefreshing) {
       this.selectedWasKnown = true;
-      this.pane.setEntry(this.model.get(path) ?? null);
-      void this.loadFile(path);
+      this.pane?.setEntry(this.model.get(path) ?? null);
+      this.openFile.returned();
     }
     if (!path) this.maybeOpenReadme();
   }
 
-  /** Ask the page again after a refresh and apply only its latest answer. */
-  private async refreshDiff(path: string): Promise<void> {
-    if (this.model.get(path)?.type !== "file") return;
-    const epoch = this.inputEpoch;
-    const request = ++this.diffRequest;
-    const diff = await this.diffFor(path);
-    if (epoch !== this.inputEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane || this.model.get(path)?.type !== "file") return;
-    const wasShown = this.pane.diffShown;
-    const shown = this.applyComparison(path, diff);
-    if (shown) ++this.readEpoch;
-    else if (wasShown) void this.readFile(path, ++this.readEpoch);
-  }
-
-  /** Show a view using the last accepted comparison, without calling the page. */
-  private showHeldView(path: string): void {
-    if (this.pane?.isDeleted && !this.model.get(path)) return;
-    const epoch = ++this.readEpoch;
-    const diff = this.currentDiff?.path === path ? this.currentDiff.result : null;
-    if (!this.applyComparison(path, diff)) {
-      this.pane?.startRead();
-      void this.readFile(path, epoch);
-    }
-  }
-
-  /** Apply one accepted comparison and set whether refresh should read the file. */
-  private applyComparison(path: string, diff: DiffResult): boolean {
-    this.currentDiff = { path, result: diff };
-    const shown = diff !== null && this.diffLeftFor !== path;
-    if (diff && "loadFailed" in diff) this.pane?.showDiffLoadFailure(shown);
-    else this.pane?.setDiff(diff, shown);
-    this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
-    return shown;
+  private renderOpenFile(state: PaneState): void {
+    this.pane?.render(state);
+    const path = state.path;
+    const changedDiff = state.mode === "diff" && state.comparison.kind !== "none" && state.view.kind !== "deleted";
+    this.loader.setOpenFile(path && !changedDiff && fileKind(path) !== "binary" ? path : null);
   }
 
   /** The change of a file, no diff, or a failure to load the diff renderer. */
-  private async diffFor(path: string): Promise<DiffResult> {
-    if (!this.diffValue) return null;
+  private async compareFile(path: string): Promise<Comparison> {
+    if (!this.diffValue) return { kind: "none" };
     let versions: DiffVersions;
     try {
       const result: unknown = await this.diffValue(path);
-      if (result === null || result === undefined) return null;
+      if (result === null || result === undefined) return { kind: "none" };
       if (!isDiffVersions(result)) throw new TypeError("diff must return { before, after } with text or nothing for each, or null");
       versions = result;
-    } catch (error) { console.error("tv-code diff failed", error); return null; }
+    } catch (error) { console.error("tv-code diff failed", error); return { kind: "none" }; }
     let module: typeof import("./tv-code-diff");
     try { module = await loadDiffModule(); }
-    catch (error) { console.error("tv-code diff module failed to load", error); return { loadFailed: true }; }
+    catch (error) { console.error("tv-code diff module failed to load", error); return { kind: "module-error" }; }
     try {
       const languageId = detectLanguage(path, this.model.get(path)?.language)?.id ?? null;
       return {
+        kind: "ready",
         change: module.compareVersions(path, versions.before ?? "", versions.after ?? "", languageId),
         createView: onDrawn => new module.DiffView(onDrawn),
       };
-    } catch (error) { console.error("tv-code diff failed", error); return null; }
+    } catch (error) { console.error("tv-code diff failed", error); return { kind: "none" }; }
   }
 
   private maybeOpenReadme(): void {
@@ -454,7 +431,7 @@ export class TvCodeElement extends HTMLElement {
     // Closing the file must outlast later connection listings. A new input
     // resets this flag and may make the README rule apply again.
     if (!path) this.autoOpened = true;
-    if (path !== this.selectedValue) { this.pendingHeading = null; this.diffLeftFor = null; }
+    if (path !== this.selectedValue) this.pendingHeading = null;
     if (path !== this.selectedValue && this.singleFile && this.activeInput === "connection" && !this.connectionValue?.list) {
       this.model.replace(path ? [{ path, type: "file" }] : []);
     }
@@ -478,11 +455,10 @@ export class TvCodeElement extends HTMLElement {
     this.loader.setOpenFile(path && fileKind(path) !== "binary" ? path : null);
     this.sidebar?.setSelected(path);
     if (path) {
-      this.pane?.start(path);
+      this.openFile.open(path);
       this.pane?.setEntry(this.model.get(path) ?? null);
       if (!this.singleFile) void this.sidebar?.reveal(path);
-      void this.loadFile(path);
-    } else { this.setLines(null, false); this.pane?.showEmpty(); }
+    } else { this.setLines(null, false); this.openFile.close(); }
     if (reader && path) {
       this.recentPaths = [path, ...this.recentPaths.filter(recent => recent !== path)];
       this.setLines(formatLines(readerLines), false);
@@ -505,30 +481,13 @@ export class TvCodeElement extends HTMLElement {
     this.reflecting = false;
   }
 
-  private async loadFile(path: string, retry = false, showAnyway = false): Promise<void> {
-    if (this.pane?.isDeleted && !this.model.get(path)) return;
-    const epoch = ++this.readEpoch;
-    const input = this.inputEpoch;
-    const request = ++this.diffRequest;
-    if (this.diffValue || this.pane?.hasDiff) {
-      // A file shown as its diff is not read.
-      const diff = await this.diffFor(path);
-      if (input !== this.inputEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane ||
-        (this.pane.isDeleted && !this.model.get(path))) return;
-      if (this.applyComparison(path, diff)) return;
-    }
-    else this.applyComparison(path, null);
-    if (epoch !== this.readEpoch) return;
-    await this.readFile(path, epoch, retry, showAnyway);
-  }
-
-  /** Read an ordinary view without waiting for the page's diff function. */
-  private async readFile(path: string, epoch: number, retry = false, showAnyway = false): Promise<void> {
+  /** Read transport and decoding; OpenFile decides whether its result may appear. */
+  private async readOpenFile(path: string, retry = false, showAnyway = false): Promise<DecodedRead | null> {
     let result: DecodedRead | null = null;
     const entry = this.model.get(path);
     const kind = fileKind(path);
     const imagePreview = kind === "image" && !(path.toLowerCase().endsWith(".svg") && this.showSource);
-    if (!entry && this.model.get(parentPath(path))?.listing === "listed") result = { kind: "failure", message: "File not found" };
+    if (!entry && this.model.get(parentPath(path))?.listing === "listed") result = { kind: "failure", message: "File not found", status: 404 };
     else if (kind === "binary") result = { kind: "binary" };
     else if (!showAnyway && entry?.size !== undefined && entry.size > maximumBytes) result = { kind: "large", size: entry.size };
     else if (imagePreview && entry?.src) result = { kind: "binary" };
@@ -540,18 +499,7 @@ export class TvCodeElement extends HTMLElement {
         catch (error) { result = readFailure(error); }
       } else result = entry?.src ? { kind: "binary" } : { kind: "failure", message: "File has no content" };
     }
-    if (!result || epoch !== this.readEpoch || this.selectedValue !== path ||
-      (this.pane?.isDeleted && !this.model.get(path))) return;
-    if (result.kind === "failure" && result.status === 404) {
-      if (this.selectedWasKnown) this.pane?.markDeleted();
-      else this.pane?.show({ kind: "failure", message: "File not found" });
-      return;
-    }
-    this.pane?.setEntry(this.model.get(path) ?? null);
-    if (this.model.get(path)?.type === "file") this.selectedWasKnown = true;
-    if (this.pane?.hasBodyFor(path)) this.pane.update(result);
-    else this.pane?.show(result);
-    this.revealHeading();
+    return result;
   }
 
   private finderFiles(): Array<{ path: string; dimmed: boolean }> {

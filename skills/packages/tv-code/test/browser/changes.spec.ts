@@ -409,6 +409,21 @@ test("a refresh that removes a diff cannot later overwrite a newer changed versi
   expect(await diffLines(page)).not.toContainEqual(['change-addition', 'stale']);
 });
 
+test('clearing diff while its first comparison waits opens the file and ignores the old answer', async ({ page }) => {
+  await ready(page);
+  await page.locator('tv-code').evaluate(viewer => {
+    (viewer as any).diff = () => new Promise(resolve => { (window as any).finishOldComparison = resolve; });
+    (viewer as any).files = { 'a.ts': 'ordinary body' };
+    (viewer as any).selected = 'a.ts';
+  });
+  await page.locator('tv-code').evaluate(viewer => { (viewer as any).diff = null; });
+  await expect(page.locator('.cv-code-text')).toHaveText('ordinary body');
+  await page.evaluate(() => (window as any).finishOldComparison({ before: 'old\n', after: 'stale\n' }));
+  await expect(modes(page)).toHaveCount(0);
+  await expect(diffBody(page)).toHaveCount(0);
+  await expect(page.locator('.cv-code-text')).toHaveText('ordinary body');
+});
+
 for (const removedVersion of [null, { before: 'old\n', after: 'changed\n' }]) {
   test(`a deleted changed file keeps its last diff when refresh returns ${removedVersion ? 'versions' : 'null'}`, async ({ page }) => {
     await ready(page);
@@ -472,6 +487,90 @@ test('a comparison already in flight cannot redraw a file deleted by refresh', a
   expect(await page.evaluate(() => (window as any).state.calls)).toBe(2);
   expect(await diffLines(page)).toContainEqual(['change-addition', 'last']);
   await expect(page.locator('.cv-pane-content')).toHaveClass(/cv-pane-faded/);
+});
+
+test('a pending diff draw cannot revive a file removed by its listing', async ({ page }) => {
+  await ready(page);
+  await page.locator('tv-code').evaluate(viewer => {
+    const state = { present: true, finishDraw: null as null | (() => void) };
+    (window as any).state = state;
+    (viewer as any).connection = {
+      list: () => state.present ? [{ name: 'a.ts', type: 'file' }] : [],
+      read: () => 'last body',
+    };
+    (viewer as any).selected = 'a.ts';
+  });
+  await expect(page.locator('.cv-line')).toContainText('last body');
+  await page.locator('tv-code').evaluate(viewer => {
+    const controller = (viewer as any).openFile;
+    controller.requests.compare = async () => ({
+      kind: 'ready', change: { additions: 1, deletions: 1, metadata: null },
+      createView: (drawn: () => void) => ({
+        element: document.createElement('div'),
+        show: () => { (window as any).state.finishDraw = drawn; },
+        destroy: () => undefined,
+      }),
+    });
+    (viewer as any).diff = () => ({ before: 'old', after: 'new' });
+  });
+  await expect(page.locator('.cv-pane-diff-pending')).toHaveCount(1);
+  await page.locator('tv-code').evaluate(viewer => {
+    (window as any).state.present = false;
+    (viewer as any).refresh('a.ts');
+  });
+  await expect(page.locator('.cv-deleted')).toBeVisible();
+  await page.evaluate(() => (window as any).state.finishDraw());
+  await expect(page.locator('.cv-pane-diff')).toHaveCount(0);
+  await expect(page.locator('.cv-pane-content')).toHaveClass(/cv-pane-faded/);
+  await expect(page.locator('.cv-line')).toContainText('last body');
+});
+
+test('a 404 after a listing keeps Deleted despite a later comparison', async ({ page }) => {
+  await ready(page);
+  await page.locator('tv-code').evaluate(viewer => {
+    const state = { missing: false, comparisons: 0 };
+    (window as any).state = state;
+    (viewer as any).diff = () => { state.comparisons++; return { before: 'old\n', after: 'new\n' }; };
+    (viewer as any).connection = {
+      list: () => [{ name: 'a.ts', type: 'file' }],
+      read: () => state.missing ? new Response('gone', { status: 404 }) : 'last body',
+    };
+    (viewer as any).selected = 'a.ts';
+  });
+  await expect(diffBody(page)).toBeVisible();
+  await mode(page, 'Source').click();
+  await expect(page.locator('.cv-line')).toContainText('last body');
+  await page.locator('tv-code').evaluate(viewer => { (window as any).state.missing = true; (viewer as any).refresh('a.ts'); });
+  await expect(page.locator('.cv-deleted')).toBeVisible();
+  await page.waitForTimeout(250);
+  await expect(page.locator('.cv-pane-content')).toHaveClass(/cv-pane-faded/);
+  await expect(page.locator('.cv-line')).toContainText('last body');
+  await expect(page.locator('.cv-pane-content .cv-failure')).toHaveCount(0);
+});
+
+test('a failed read after a diff disappears keeps the diff and shows Retry', async ({ page }) => {
+  await ready(page);
+  await page.locator('tv-code').evaluate(viewer => {
+    const state = { changed: true, finishRead: null as null | ((value: Response) => void) };
+    (window as any).state = state;
+    (viewer as any).diff = () => state.changed ? { before: 'old\n', after: 'last\n' } : null;
+    (viewer as any).connection = {
+      list: () => [{ name: 'a.ts', type: 'file' }],
+      read: () => new Promise<Response>(resolve => { state.finishRead = resolve; }),
+    };
+    (viewer as any).selected = 'a.ts';
+  });
+  expect(await diffLines(page)).toContainEqual(['change-addition', 'last']);
+  await page.locator('tv-code').evaluate(viewer => { (window as any).state.changed = false; (viewer as any).refresh('a.ts'); });
+  await expect(page.locator('.cv-pane-progress')).toHaveClass(/cv-pane-progress-active/);
+  await expect(page.locator('.cv-pane-content')).toHaveClass(/cv-pane-faded/);
+  await page.evaluate(() => (window as any).state.finishRead(new Response('{"error":"offline"}', {
+    status: 503, headers: { 'Content-Type': 'application/json' },
+  })));
+  await expect(page.locator('.cv-pane-notice')).toContainText('offline');
+  await expect(page.locator('.cv-pane-notice .cv-retry')).toBeVisible();
+  expect(await diffLines(page)).toContainEqual(['change-addition', 'last']);
+  await expect(page.locator('.cv-pane-progress')).not.toHaveClass(/cv-pane-progress-active/);
 });
 
 test("mode changes reuse the held comparison while the diff function stalls", async ({ page }) => {

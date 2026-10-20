@@ -332,6 +332,8 @@ class Loader {
     __publicField(this, "refreshing", false);
     /** Called after a refresh read of the current open file. */
     __publicField(this, "onRefreshRead");
+    /** When supplied, the open-file coordinator owns the refresh read. */
+    __publicField(this, "refreshOpenFile");
     /** Called after a refresh round has applied its folder listings. */
     __publicField(this, "onRefreshComplete");
     this.model = model;
@@ -493,9 +495,12 @@ class Loader {
         const path = this.openFile;
         if (missingOpen && path && ((_f = this.model.get(path)) == null ? void 0 : _f.type) === "file") readOpen = true;
         if (readOpen && path && ((_g = this.model.get(path)) == null ? void 0 : _g.type) === "file") {
-          const kind = fileKind(path);
-          const result = kind === "image" && ((_h = this.model.get(path)) == null ? void 0 : _h.src) ? { kind: "binary" } : await this.read(path, kind === "image" ? "bytes" : "text", false, true);
-          if (result && generation === this.generation && this.openFile === path) (_i = this.onRefreshRead) == null ? void 0 : _i.call(this, path, result);
+          if (this.refreshOpenFile) await this.refreshOpenFile(path);
+          else {
+            const kind = fileKind(path);
+            const result = kind === "image" && ((_h = this.model.get(path)) == null ? void 0 : _h.src) ? { kind: "binary" } : await this.read(path, kind === "image" ? "bytes" : "text", false, true);
+            if (result && generation === this.generation && this.openFile === path) (_i = this.onRefreshRead) == null ? void 0 : _i.call(this, path, result);
+          }
         }
         if (generation === this.generation) (_j = this.onRefreshComplete) == null ? void 0 : _j.call(this, paths, all2);
       } while (generation === this.generation && (this.refreshAll || this.refreshPaths.size > 0));
@@ -21794,6 +21799,139 @@ function formatSize(bytes) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1).replace(/\.0$/, "")} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, "")} MB`;
 }
+const initialPaneState = {
+  path: null,
+  mode: "source",
+  view: { kind: "empty" },
+  comparison: { kind: "none" },
+  readTicket: 0,
+  compareTicket: 0,
+  drawTicket: 0,
+  revision: 0
+};
+function lastBody(view) {
+  if (view.kind === "content" || view.kind === "diff") return view.body;
+  if (view.kind === "loading" || view.kind === "deleted" || view.kind === "error") return view.last;
+  return null;
+}
+function showComparison(state, comparison) {
+  const last = lastBody(state.view);
+  const revision = state.revision + 1;
+  if ((last == null ? void 0 : last.kind) === "diff" && last.path === state.path && state.view.kind === "diff") {
+    return { ...state, revision, view: { kind: "diff", body: { ...last, comparison, revision } } };
+  }
+  const drawTicket = state.drawTicket + 1;
+  return { ...state, drawTicket, view: { kind: "loading", last, pendingDiff: { ticket: drawTicket, comparison } } };
+}
+function reducePane(state, event) {
+  var _a2;
+  switch (event.type) {
+    case "open":
+      return {
+        ...state,
+        path: event.path,
+        mode: event.mode,
+        comparison: { kind: "none" },
+        view: { kind: "loading", last: lastBody(state.view) },
+        readTicket: state.readTicket + 1,
+        compareTicket: state.compareTicket + 1,
+        drawTicket: state.drawTicket + 1
+      };
+    case "close":
+      return {
+        ...state,
+        path: null,
+        view: { kind: "empty" },
+        comparison: { kind: "none" },
+        readTicket: state.readTicket + 1,
+        compareTicket: state.compareTicket + 1,
+        drawTicket: state.drawTicket + 1
+      };
+    case "compare-start":
+      return state.path && state.view.kind !== "deleted" ? { ...state, compareTicket: state.compareTicket + 1 } : state;
+    case "compare-result": {
+      if (!state.path || state.view.kind === "deleted" || event.ticket !== state.compareTicket) return state;
+      const next = { ...state, comparison: event.result };
+      if (state.mode !== "diff") return next;
+      if (event.result.kind === "ready") return showComparison(next, event.result);
+      if (event.result.kind === "module-error") return { ...next, drawTicket: next.drawTicket + 1, view: { kind: "error", last: null, message: "Could not load diff" } };
+      if (state.view.kind === "content") return next;
+      return { ...next, drawTicket: next.drawTicket + 1, view: { kind: "loading", last: lastBody(state.view) } };
+    }
+    case "read-start":
+      if (!state.path) return state;
+      return {
+        ...state,
+        readTicket: state.readTicket + 1,
+        drawTicket: state.drawTicket + 1,
+        view: state.view.kind === "deleted" ? state.view : { kind: "loading", last: lastBody(state.view) }
+      };
+    case "read-result": {
+      if (!state.path || event.ticket !== state.readTicket) return state;
+      if (event.result.kind === "failure") {
+        if (event.result.status === 404 && event.known !== false) return reducePane(state, { type: "deleted" });
+        if (state.view.kind === "deleted") return state;
+        const last2 = lastBody(state.view);
+        return { ...state, view: { kind: "error", last: (last2 == null ? void 0 : last2.path) === state.path ? last2 : null, message: event.result.message } };
+      }
+      const last = lastBody(state.view);
+      const revision = state.revision + 1;
+      const body2 = {
+        kind: "content",
+        path: state.path,
+        result: event.result,
+        revision,
+        update: (last == null ? void 0 : last.kind) === "content" && last.path === state.path
+      };
+      return { ...state, revision, view: { kind: "content", body: body2 } };
+    }
+    case "mode": {
+      if (!state.path || state.view.kind === "deleted") return state;
+      const next = { ...state, mode: event.mode, readTicket: state.readTicket + 1, drawTicket: state.drawTicket + 1 };
+      if (event.mode === "diff") {
+        if (state.comparison.kind === "ready") return showComparison(next, state.comparison);
+        if (state.comparison.kind === "module-error") return { ...next, view: { kind: "error", last: null, message: "Could not load diff" } };
+      }
+      return next;
+    }
+    case "deleted": {
+      if (!state.path || state.view.kind === "deleted") return state;
+      const last = lastBody(state.view);
+      return {
+        ...state,
+        view: { kind: "deleted", last: (last == null ? void 0 : last.path) === state.path ? last : null },
+        readTicket: state.readTicket + 1,
+        compareTicket: state.compareTicket + 1,
+        drawTicket: state.drawTicket + 1
+      };
+    }
+    case "drawn":
+      if (!state.path || state.view.kind !== "loading" || ((_a2 = state.view.pendingDiff) == null ? void 0 : _a2.ticket) !== event.ticket || event.ticket !== state.drawTicket) return state;
+      return { ...state, view: { kind: "diff", body: {
+        kind: "diff",
+        path: state.path,
+        comparison: state.view.pendingDiff.comparison,
+        revision: state.revision + 1
+      } }, revision: state.revision + 1 };
+  }
+}
+function paneAppearance(state) {
+  const view = state.view;
+  const body2 = lastBody(view);
+  return {
+    path: state.path,
+    mode: state.mode,
+    body: body2,
+    pendingDiff: view.kind === "loading" ? view.pendingDiff : void 0,
+    progress: view.kind === "loading",
+    faded: view.kind === "deleted" || view.kind === "loading" && !!body2,
+    deleted: view.kind === "deleted",
+    notice: view.kind === "error" && !!view.last ? view.message : null,
+    inlineError: view.kind === "error" && !view.last ? view.message : null,
+    retry: view.kind === "error",
+    comparison: state.comparison
+  };
+}
 class Pane {
   constructor(openSidebarButton) {
     __publicField(this, "element", h$1("section", { className: "cv-pane" }));
@@ -21806,9 +21944,9 @@ class Pane {
     __publicField(this, "content", h$1("div", { className: "cv-pane-content" }));
     __publicField(this, "fadeTimer", null);
     __publicField(this, "lineObserver", null);
-    __publicField(this, "currentPath", null);
+    __publicField(this, "state", initialPaneState);
+    __publicField(this, "renderedRevision", -1);
     __publicField(this, "entry", null);
-    __publicField(this, "deleted", false);
     __publicField(this, "contentPath", null);
     __publicField(this, "result", null);
     __publicField(this, "body", null);
@@ -21817,12 +21955,11 @@ class Pane {
     __publicField(this, "wrapped", false);
     __publicField(this, "source", false);
     __publicField(this, "singleFile", false);
-    /** The change of the current file offered as its Diff view, and whether that view is shown. */
-    __publicField(this, "diff", null);
     /** The diff in the content area, shown as the body of the current or previous file. */
     __publicField(this, "diffBody", null);
     /** A diff drawing unseen over the content it will replace. */
     __publicField(this, "pendingDiff", null);
+    __publicField(this, "onDiffDrawn");
     __publicField(this, "onRetry");
     __publicField(this, "onReveal");
     __publicField(this, "onLinesChange");
@@ -21842,24 +21979,18 @@ class Pane {
     this.findButton = find2;
     this.header.append(this.openSidebarButton, this.pathArea, this.actions, find2);
     this.element.append(this.header, this.progress, this.notice, this.content);
-    this.showEmpty();
+    this.render(initialPaneState);
   }
-  /** Whether the last successfully displayed body belongs to this path. */
+  get currentPath() {
+    return this.state.path;
+  }
+  get diff() {
+    const comparison = this.state.comparison;
+    return comparison.kind === "none" ? null : { change: comparison.kind === "ready" ? comparison.change : null, shown: this.state.mode === "diff" };
+  }
+  /** Whether the drawn ordinary body belongs to this path. */
   hasBodyFor(path) {
     return this.contentPath === path && this.result !== null;
-  }
-  /** Whether the current file offers a Diff view. */
-  get hasDiff() {
-    return this.diff !== null;
-  }
-  /** Whether the Diff view of the current file is the view chosen. */
-  get diffShown() {
-    var _a2;
-    return ((_a2 = this.diff) == null ? void 0 : _a2.shown) ?? false;
-  }
-  /** Whether the current path has been marked as removed. */
-  get isDeleted() {
-    return this.deleted;
   }
   /** Whether a Markdown image depends on a changed file. */
   referencesImage(path) {
@@ -21916,70 +22047,71 @@ class Pane {
     this.source = value;
     this.renderActions();
   }
-  /**
-   * Offer a change of the current file as its Diff view, or none. When the
-   * Diff view is shown, a diff of this file already in the content area
-   * draws the change in place. Otherwise a new diff draws unseen over the
-   * content already shown, which keeps its fade and progress bar, and
-   * replaces it once drawn, so the pane never shows an empty diff.
-   */
-  setDiff(diff2, shown) {
-    this.diff = diff2 ? { change: diff2.change, shown } : null;
-    if (shown) this.deleted = false;
-    if (!diff2 || !shown) this.discardPendingDiff();
-    else if (this.diffBody && this.contentPath === this.currentPath) {
-      this.diffBody.show(diff2.change);
-      this.finishLoading();
-    } else if (this.pendingDiff) this.pendingDiff.view.show(diff2.change);
-    else {
-      if (this.contentPath === null) this.content.replaceChildren();
-      const view = diff2.createView(() => this.revealDiff(view));
-      const wrapper = h$1("div", { className: "cv-pane-diff cv-pane-diff-pending" }, view.element);
-      this.pendingDiff = { view, wrapper };
-      this.content.append(wrapper);
-      view.show(diff2.change);
+  /** Render one state; all visual consequences come from its appearance. */
+  render(state) {
+    var _a2, _b2, _c2;
+    const priorPath = this.state.path;
+    this.state = state;
+    const appearance = paneAppearance(state);
+    if (priorPath !== state.path) {
+      (_a2 = this.lineObserver) == null ? void 0 : _a2.disconnect();
+      this.lineObserver = null;
+      this.entry = null;
+      this.content.scrollTop = 0;
     }
-    this.renderPath();
-    this.renderActions();
-  }
-  /** Show a failed module load in the Diff view while retaining the other views. */
-  showDiffLoadFailure(shown) {
-    this.diff = { change: null, shown };
-    this.discardPendingDiff();
-    if (shown) {
-      this.finishLoading();
-      this.notice.replaceChildren();
+    if (this.pendingDiff && this.pendingDiff.ticket !== ((_b2 = appearance.pendingDiff) == null ? void 0 : _b2.ticket) && !(state.view.kind === "diff" && this.pendingDiff.ticket === state.drawTicket)) this.discardPendingDiff();
+    if (appearance.body && this.renderedRevision !== appearance.body.revision) {
+      if (appearance.body.kind === "content") this.display(appearance.body.result, appearance.body.update);
+      else this.displayDiff(appearance.body);
+      this.renderedRevision = appearance.body.revision;
+    } else if (!appearance.body && !appearance.pendingDiff) {
+      this.renderedRevision = -1;
       this.clearBody();
-      this.result = null;
-      this.deleted = false;
       this.contentPath = null;
-      this.content.replaceChildren(this.failure("Could not load diff"));
+      this.result = null;
+      if (state.view.kind === "empty") this.renderEmpty();
+      else if (appearance.inlineError) this.content.replaceChildren(this.failure(appearance.inlineError));
+      else if (state.view.kind === "deleted") this.content.replaceChildren(h$1("div", { className: "cv-pane-empty", text: "File deleted" }));
+      else this.content.replaceChildren();
     }
+    if (appearance.pendingDiff && ((_c2 = this.pendingDiff) == null ? void 0 : _c2.ticket) !== appearance.pendingDiff.ticket) {
+      const pending = appearance.pendingDiff;
+      const view = pending.comparison.createView(() => {
+        var _a3;
+        return (_a3 = this.onDiffDrawn) == null ? void 0 : _a3.call(this, pending.ticket);
+      });
+      const wrapper = h$1("div", { className: "cv-pane-diff cv-pane-diff-pending" }, view.element);
+      this.pendingDiff = { ticket: pending.ticket, view, wrapper };
+      this.content.append(wrapper);
+      view.show(pending.comparison.change);
+    }
+    if (this.state !== state) return;
     this.renderPath();
     this.renderActions();
+    this.notice.replaceChildren(...appearance.notice ? [this.failure(appearance.notice)] : []);
+    this.progress.classList.toggle("cv-pane-progress-active", appearance.progress);
+    if (!appearance.progress || !appearance.faded) {
+      if (this.fadeTimer) clearTimeout(this.fadeTimer);
+      this.fadeTimer = null;
+      this.content.classList.toggle("cv-pane-faded", appearance.faded);
+    } else if (!this.fadeTimer && !this.content.classList.contains("cv-pane-faded")) {
+      this.fadeTimer = setTimeout(() => {
+        this.fadeTimer = null;
+        if (paneAppearance(this.state).progress && paneAppearance(this.state).faded) this.content.classList.add("cv-pane-faded");
+      }, 200);
+    }
   }
-  finishLoading() {
-    if (this.fadeTimer) clearTimeout(this.fadeTimer);
-    this.fadeTimer = null;
-    this.progress.classList.remove("cv-pane-progress-active");
-    this.content.classList.remove("cv-pane-faded");
-  }
-  /** Replace the content with a pending diff once it has drawn. */
-  revealDiff(view) {
-    const pending = this.pendingDiff;
-    if ((pending == null ? void 0 : pending.view) !== view) return;
-    this.pendingDiff = null;
-    this.finishLoading();
-    this.notice.replaceChildren();
-    this.clearBody();
-    this.diffBody = view;
-    this.result = null;
-    this.deleted = false;
-    this.contentPath = this.currentPath;
-    pending.wrapper.classList.remove("cv-pane-diff-pending");
-    for (const child of [...this.content.children]) if (child !== pending.wrapper) child.remove();
-    this.renderPath();
-    this.renderActions();
+  displayDiff(body2) {
+    if (this.pendingDiff) {
+      const pending = this.pendingDiff;
+      this.pendingDiff = null;
+      this.clearBody();
+      this.diffBody = pending.view;
+      this.result = null;
+      this.contentPath = body2.path;
+      pending.wrapper.classList.remove("cv-pane-diff-pending");
+      this.content.replaceChildren(pending.wrapper);
+    } else if (this.diffBody && this.contentPath === body2.path) this.diffBody.show(body2.comparison.change);
   }
   discardPendingDiff() {
     var _a2, _b2;
@@ -21987,71 +22119,12 @@ class Pane {
     (_b2 = this.pendingDiff) == null ? void 0 : _b2.wrapper.remove();
     this.pendingDiff = null;
   }
-  /** Show an immediate new header and keep old content during a pending read. */
-  start(path) {
-    var _a2;
-    (_a2 = this.lineObserver) == null ? void 0 : _a2.disconnect();
-    this.lineObserver = null;
-    this.currentPath = path;
-    this.entry = null;
-    this.result = null;
-    this.diff = null;
-    this.discardPendingDiff();
-    this.deleted = false;
-    this.renderPath();
-    this.renderActions();
-    this.notice.replaceChildren();
-    if (this.contentPath === null) {
-      this.clearBody();
-      this.content.replaceChildren();
-    }
-    this.startRead();
-    this.content.scrollTop = 0;
-  }
-  /** Keep the previous body visible while another view of this file is read. */
-  startRead() {
-    this.progress.classList.add("cv-pane-progress-active");
-    this.content.classList.remove("cv-pane-faded");
-    if (this.fadeTimer) clearTimeout(this.fadeTimer);
-    this.fadeTimer = setTimeout(() => this.content.classList.add("cv-pane-faded"), 200);
-  }
-  /** Complete a first load, including an error shown in place of content. */
-  show(result) {
-    this.display(result, false);
-  }
-  /** Refresh the open body, preserving its viewport and marking code changes. */
-  update(result) {
-    if (result.kind === "failure") {
-      if (result.status === 404) this.markDeleted();
-      else {
-        this.finishLoading();
-        this.showRefreshFailure(result.message);
-      }
-      return;
-    }
-    this.display(result, true);
-  }
   display(result, update) {
     var _a2, _b2, _c2, _d2, _e2, _f, _g, _h;
-    if (this.fadeTimer) clearTimeout(this.fadeTimer);
-    this.fadeTimer = null;
-    this.progress.classList.remove("cv-pane-progress-active");
-    this.content.classList.remove("cv-pane-faded");
-    this.notice.replaceChildren();
-    if (result.kind === "failure") {
-      this.clearBody();
-      this.contentPath = null;
-      this.result = null;
-      this.content.replaceChildren(this.failure(result.message));
-      this.renderActions();
-      return;
-    }
     const previous = this.result;
     const sameBody = update && this.contentPath === this.currentPath;
     this.result = result;
-    this.deleted = false;
     this.contentPath = this.currentPath;
-    this.renderPath();
     const path = this.currentPath ?? "";
     const kind = fileKind(path);
     const asSource = this.source && (kind === "markdown" || path.toLowerCase().endsWith(".svg"));
@@ -22119,43 +22192,8 @@ class Pane {
         if (((_e2 = this.linesValue) == null ? void 0 : _e2.start) !== (requestedLines == null ? void 0 : requestedLines.start) || ((_f = this.linesValue) == null ? void 0 : _f.end) !== (requestedLines == null ? void 0 : requestedLines.end)) (_g = this.onMappedLines) == null ? void 0 : _g.call(this, this.linesValue);
       }
     } else this.replaceBody(binaryBody(path.split("/").at(-1) ?? path, (_h = this.entry) == null ? void 0 : _h.size));
-    this.renderActions();
   }
-  /** Keep the last body dimmed when its file disappears. */
-  markDeleted() {
-    if (this.fadeTimer) clearTimeout(this.fadeTimer);
-    this.fadeTimer = null;
-    this.deleted = true;
-    this.renderPath();
-    this.notice.replaceChildren();
-    this.progress.classList.remove("cv-pane-progress-active");
-    if (this.contentPath !== this.currentPath) {
-      this.clearBody();
-      this.content.replaceChildren(h$1("div", { className: "cv-pane-empty", text: "File deleted" }));
-    }
-    this.content.classList.add("cv-pane-faded");
-  }
-  /** Keep content visible under a transient read failure and offer Retry. */
-  showRefreshFailure(message) {
-    this.notice.replaceChildren(this.failure(message));
-  }
-  /** Clear the selection and show the finder hint. */
-  showEmpty() {
-    if (this.fadeTimer) clearTimeout(this.fadeTimer);
-    this.fadeTimer = null;
-    this.currentPath = null;
-    this.entry = null;
-    this.diff = null;
-    this.discardPendingDiff();
-    this.deleted = false;
-    this.contentPath = null;
-    this.result = null;
-    this.clearBody();
-    this.renderPath();
-    this.renderActions();
-    this.progress.classList.remove("cv-pane-progress-active");
-    this.notice.replaceChildren();
-    this.content.classList.remove("cv-pane-faded");
+  renderEmpty() {
     const shortcut = /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? "⌘" : "Ctrl";
     this.content.replaceChildren(h$1(
       "div",
@@ -22211,7 +22249,7 @@ class Pane {
         h$1("span", { className: "cv-diff-deletions", text: `−${change.deletions}` })
       ));
     }
-    if (this.deleted) parts.push(h$1("span", { className: "cv-deleted", text: "Deleted" }));
+    if (paneAppearance(this.state).deleted) parts.push(h$1("span", { className: "cv-deleted", text: "Deleted" }));
     this.pathArea.replaceChildren(...parts);
   }
   renderActions() {
@@ -22276,6 +22314,87 @@ class Pane {
       return (_a2 = this.onRetry) == null ? void 0 : _a2.call(this);
     } }, svg$4(icons.retry), "Retry");
     return h$1("div", { className: "cv-failure", role: "alert" }, h$1("span", { text: message }), retry);
+  }
+}
+class OpenFile {
+  constructor(requests) {
+    __publicField(this, "state", initialPaneState);
+    this.requests = requests;
+  }
+  send(event) {
+    const next = reducePane(this.state, event);
+    if (next === this.state) return false;
+    this.state = next;
+    this.requests.changed(next);
+    return true;
+  }
+  open(path, mode = "diff") {
+    this.send({ type: "open", path, mode });
+    if (this.requests.hasComparison()) void this.compare();
+    else void this.read();
+  }
+  close() {
+    this.send({ type: "close" });
+  }
+  deleted() {
+    this.send({ type: "deleted" });
+  }
+  /** A returning file must be read successfully before its Deleted mark clears. */
+  returned() {
+    if (this.state.path) void this.read(false, false, true, true);
+  }
+  /** Reader mode choices never call or await the page's comparison function. */
+  mode(mode) {
+    if (!this.state.path || this.state.view.kind === "deleted") return;
+    this.send({ type: "mode", mode });
+    if (mode !== "diff") void this.read();
+  }
+  retry(showAnyway = false) {
+    if (!this.state.path || this.state.view.kind === "deleted") return;
+    if (!showAnyway && this.state.mode === "diff" && this.state.comparison.kind === "module-error") void this.compare();
+    else void this.read(true, showAnyway);
+  }
+  /** A changed `diff` property or a completed refresh asks for one new comparison. */
+  comparisonChanged() {
+    if (this.state.path && this.state.view.kind !== "deleted") void this.compare();
+  }
+  /** Refresh only files that have or offer a comparison. */
+  refreshComparison() {
+    if (!this.state.path || this.state.view.kind === "deleted") return;
+    if (this.requests.hasComparison() || this.state.comparison.kind !== "none") void this.compare();
+  }
+  /** The loader calls this after listing and awaits it before reporting the round. */
+  async refreshRead(path) {
+    if (path === this.state.path) await this.read(true, false, this.state.view.kind === "deleted", false);
+  }
+  drawn(ticket) {
+    this.send({ type: "drawn", ticket });
+  }
+  async compare() {
+    const path = this.state.path;
+    if (!path || this.state.view.kind === "deleted") return;
+    this.send({ type: "compare-start" });
+    const ticket = this.state.compareTicket;
+    const result = this.requests.hasComparison() ? await this.requests.compare(path) : { kind: "none" };
+    const oldView = this.state.view;
+    if (!this.send({ type: "compare-result", ticket, result })) return;
+    if (result.kind === "none" && this.state.mode === "diff" && (oldView.kind === "diff" || oldView.kind === "loading" || oldView.kind === "error")) void this.read();
+  }
+  async read(retry = false, showAnyway = false, recovery = false, compareAfterRecovery = false) {
+    var _a2, _b2;
+    const path = this.state.path;
+    if (!path) return;
+    if (this.state.view.kind === "deleted" && !recovery) return;
+    this.send({ type: "read-start" });
+    const ticket = this.state.readTicket;
+    const result = await this.requests.read(path, retry, showAnyway);
+    if (!result) return;
+    const wasDeleted = this.state.view.kind === "deleted";
+    if (!this.send({ type: "read-result", ticket, result, known: this.requests.known(path) })) return;
+    if (result.kind !== "failure") {
+      (_b2 = (_a2 = this.requests).readSucceeded) == null ? void 0 : _b2.call(_a2);
+      if (wasDeleted && compareAfterRecovery && this.requests.hasComparison()) void this.compare();
+    }
   }
 }
 const expandedLimit = 500;
@@ -23419,8 +23538,6 @@ class TvCodeElement extends HTMLElement {
     __publicField(this, "pageSelected", false);
     __publicField(this, "pendingRestore", false);
     __publicField(this, "inputEpoch", 0);
-    __publicField(this, "readEpoch", 0);
-    __publicField(this, "diffRequest", 0);
     __publicField(this, "autoOpened", false);
     __publicField(this, "reflecting", false);
     __publicField(this, "selectedWasKnown", false);
@@ -23431,9 +23548,20 @@ class TvCodeElement extends HTMLElement {
     __publicField(this, "warmed", false);
     __publicField(this, "pendingHeading", null);
     __publicField(this, "diffValue", null);
-    __publicField(this, "currentDiff", null);
-    /** The open file for which the reader chose another view than its diff. */
-    __publicField(this, "diffLeftFor", null);
+    __publicField(this, "openFile", new OpenFile({
+      read: (path, retry, showAnyway) => this.readOpenFile(path, retry, showAnyway),
+      compare: (path) => this.compareFile(path),
+      hasComparison: () => !!this.diffValue,
+      known: () => this.selectedWasKnown,
+      changed: (state) => this.renderOpenFile(state),
+      readSucceeded: () => {
+        var _a2, _b2;
+        const path = this.selectedValue;
+        if (path && ((_a2 = this.model.get(path)) == null ? void 0 : _a2.type) === "file") this.selectedWasKnown = true;
+        if (path) (_b2 = this.pane) == null ? void 0 : _b2.setEntry(this.model.get(path) ?? null);
+        this.revealHeading();
+      }
+    }));
     __publicField(this, "onDocumentReady", () => {
       if (this.activeInput === "tags") this.applyInput();
     });
@@ -23472,17 +23600,11 @@ class TvCodeElement extends HTMLElement {
       if (event.target !== document.body || document.querySelectorAll("tv-code").length !== 1) return;
       this.handleShortcut(event);
     });
-    this.loader.onRefreshRead = (path, result) => {
-      var _a2, _b2;
-      if (path === this.selectedValue) {
-        (_a2 = this.pane) == null ? void 0 : _a2.setEntry(this.model.get(path) ?? null);
-        (_b2 = this.pane) == null ? void 0 : _b2.update(result);
-      }
-    };
+    this.loader.refreshOpenFile = (path) => this.openFile.refreshRead(path);
     this.loader.onRefreshComplete = (paths, all2) => {
       var _a2, _b2;
       const open = this.selectedValue;
-      if (open && this.diffValue && ((_a2 = this.model.get(open)) == null ? void 0 : _a2.type) === "file" && (all2 || paths.includes(open))) void this.refreshDiff(open);
+      if (open && ((_a2 = this.model.get(open)) == null ? void 0 : _a2.type) === "file" && (all2 || paths.includes(open))) this.openFile.refreshComparison();
       if (all2) return;
       for (const path of paths) if ((_b2 = this.pane) == null ? void 0 : _b2.referencesImage(path)) this.pane.reloadImage(path);
     };
@@ -23513,7 +23635,7 @@ class TvCodeElement extends HTMLElement {
   }
   set diff(value) {
     this.diffValue = value ?? null;
-    if (this.selectedValue) void this.loadFile(this.selectedValue);
+    if (this.selectedValue) this.openFile.comparisonChanged();
   }
   /** The currently open file path, or null when no file is open. */
   get selected() {
@@ -23592,19 +23714,15 @@ class TvCodeElement extends HTMLElement {
       sidebar.open();
       void sidebar.reveal(path, true);
     };
-    pane.onRetry = () => {
-      if (this.selectedValue) void this.loadFile(this.selectedValue, true);
-    };
-    pane.onShowAnyway = () => {
-      if (this.selectedValue) void this.loadFile(this.selectedValue, true, true);
-    };
+    pane.onRetry = () => this.openFile.retry();
+    pane.onShowAnyway = () => this.openFile.retry(true);
+    pane.onDiffDrawn = (ticket) => this.openFile.drawn(ticket);
     pane.onToggleWrap = () => this.toggleWrap();
     pane.onFind = () => this.openFinder();
     pane.onViewMode = (mode) => {
       var _a2;
       const path = this.selectedValue;
       if (!path) return;
-      this.diffLeftFor = mode === "diff" ? null : path;
       const source = mode === "source";
       if (mode !== "diff" && (fileKind(path) === "markdown" || path.toLowerCase().endsWith(".svg")) && source !== this.showSource) {
         this.reflecting = true;
@@ -23613,7 +23731,7 @@ class TvCodeElement extends HTMLElement {
         (_a2 = this.pane) == null ? void 0 : _a2.setShowSource(source);
         this.preferences.set("showSource", source);
       }
-      this.showHeldView(path);
+      this.openFile.mode(mode);
     };
     pane.onToggleSource = () => {
       this.showSource = !this.showSource;
@@ -23625,6 +23743,7 @@ class TvCodeElement extends HTMLElement {
     pane.hasImage = (path, signal) => this.hasImage(path, signal);
     pane.setWrap(this.wrap);
     pane.setShowSource(this.showSource);
+    pane.render(this.openFile.state);
     const finder = new Finder({
       files: () => this.finderFiles(),
       recent: () => this.recentPaths,
@@ -23656,7 +23775,7 @@ class TvCodeElement extends HTMLElement {
   disconnectedCallback() {
     var _a2, _b2, _c2, _d2, _e2;
     this.inputEpoch++;
-    this.readEpoch++;
+    this.openFile.close();
     this.pendingHeading = null;
     (_a2 = this.observer) == null ? void 0 : _a2.disconnect();
     this.observer = null;
@@ -23695,10 +23814,7 @@ class TvCodeElement extends HTMLElement {
     } else if (name === "wrap") (_c2 = this.pane) == null ? void 0 : _c2.setWrap(value !== null);
     else if (name === "show-source") {
       (_d2 = this.pane) == null ? void 0 : _d2.setShowSource(value !== null);
-      if (this.selectedValue) {
-        this.diffLeftFor = this.selectedValue;
-        this.showHeldView(this.selectedValue);
-      }
+      if (this.selectedValue) this.openFile.mode(value !== null ? "source" : "preview");
     }
   }
   /** A reader toggle of line wrapping, remembered for the next visit. */
@@ -23715,10 +23831,9 @@ class TvCodeElement extends HTMLElement {
     return false;
   }
   applyInput() {
-    var _a2, _b2, _c2, _d2, _e2, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
+    var _a2, _b2, _c2, _d2, _e2, _f, _g, _h, _i, _j, _k, _l;
     if (!this.app) return;
     const epoch = ++this.inputEpoch;
-    this.readEpoch++;
     this.autoOpened = false;
     this.finderPending = 0;
     this.finderDiscovery = null;
@@ -23747,7 +23862,7 @@ class TvCodeElement extends HTMLElement {
         if (previous) {
           this.selectedWasKnown = true;
           (_f = this.pane) == null ? void 0 : _f.setEntry(this.model.get(previous) ?? null);
-          void this.loadFile(previous);
+          this.openFile.open(previous, this.openFile.state.mode);
         }
         return;
       }
@@ -23756,7 +23871,7 @@ class TvCodeElement extends HTMLElement {
         if (epoch !== this.inputEpoch || this.activeInput !== "connection") return;
         if (previous && this.selectedValue === previous) {
           void ((_a3 = this.sidebar) == null ? void 0 : _a3.reveal(previous));
-          if (((_b3 = this.model.get(parentPath(previous))) == null ? void 0 : _b3.listing) !== "listed" || this.model.get(previous)) void this.loadFile(previous);
+          if (((_b3 = this.model.get(parentPath(previous))) == null ? void 0 : _b3.listing) !== "listed" || this.model.get(previous)) this.openFile.open(previous, this.openFile.state.mode);
         } else if (remembered && !this.selectedValue && !this.pageSelected) {
           await ((_c3 = this.sidebar) == null ? void 0 : _c3.reveal(remembered));
           if (epoch !== this.inputEpoch) return;
@@ -23780,19 +23895,15 @@ class TvCodeElement extends HTMLElement {
       this.selectedWasKnown = true;
       (_j = this.pane) == null ? void 0 : _j.setEntry(this.model.get(previous) ?? null);
       (_k = this.sidebar) == null ? void 0 : _k.setSelected(previous);
-      void this.loadFile(previous);
-    } else if (previous && this.selectedWasKnown) {
-      this.readEpoch++;
-      (_l = this.pane) == null ? void 0 : _l.markDeleted();
-    } else if (previous) {
-      (_m = this.pane) == null ? void 0 : _m.start(previous);
-      (_n = this.pane) == null ? void 0 : _n.show({ kind: "failure", message: "File not found" });
-    } else if (remembered && ((_o = this.model.get(remembered)) == null ? void 0 : _o.type) === "file") this.openAutomatically(remembered, this.preferences.get("lines"));
+      this.openFile.open(previous, this.openFile.state.mode);
+    } else if (previous && this.selectedWasKnown) this.openFile.deleted();
+    else if (previous) this.openFile.open(previous, this.openFile.state.mode);
+    else if (remembered && ((_l = this.model.get(remembered)) == null ? void 0 : _l.type) === "file") this.openAutomatically(remembered, this.preferences.get("lines"));
     else if (singleFile) this.openAutomatically(files[0].path);
     else this.maybeOpenReadme();
   }
   modelChanged() {
-    var _a2, _b2, _c2, _d2, _e2, _f, _g;
+    var _a2, _b2, _c2, _d2, _e2, _f;
     (_a2 = this.sidebar) == null ? void 0 : _a2.render();
     (_b2 = this.finder) == null ? void 0 : _b2.update();
     this.scheduleWarmup();
@@ -23803,81 +23914,53 @@ class TvCodeElement extends HTMLElement {
       (_c2 = this.pane) == null ? void 0 : _c2.setEntry(openEntry);
     }
     if (path && this.activeInput === "connection" && ((_d2 = this.model.get(parentPath(path))) == null ? void 0 : _d2.listing) === "listed" && !this.model.get(path) && this.selectedWasKnown) {
-      this.readEpoch++;
-      this.diffRequest++;
-      (_e2 = this.pane) == null ? void 0 : _e2.markDeleted();
+      this.openFile.deleted();
     }
-    if (path && ((_f = this.model.get(path)) == null ? void 0 : _f.type) === "file" && ((_g = this.pane) == null ? void 0 : _g.isDeleted) && !this.loader.isRefreshing) {
+    if (path && ((_e2 = this.model.get(path)) == null ? void 0 : _e2.type) === "file" && this.openFile.state.view.kind === "deleted" && !this.loader.isRefreshing) {
       this.selectedWasKnown = true;
-      this.pane.setEntry(this.model.get(path) ?? null);
-      void this.loadFile(path);
+      (_f = this.pane) == null ? void 0 : _f.setEntry(this.model.get(path) ?? null);
+      this.openFile.returned();
     }
     if (!path) this.maybeOpenReadme();
   }
-  /** Ask the page again after a refresh and apply only its latest answer. */
-  async refreshDiff(path) {
-    var _a2, _b2;
-    if (((_a2 = this.model.get(path)) == null ? void 0 : _a2.type) !== "file") return;
-    const epoch = this.inputEpoch;
-    const request = ++this.diffRequest;
-    const diff2 = await this.diffFor(path);
-    if (epoch !== this.inputEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane || ((_b2 = this.model.get(path)) == null ? void 0 : _b2.type) !== "file") return;
-    const wasShown = this.pane.diffShown;
-    const shown = this.applyComparison(path, diff2);
-    if (shown) ++this.readEpoch;
-    else if (wasShown) void this.readFile(path, ++this.readEpoch);
-  }
-  /** Show a view using the last accepted comparison, without calling the page. */
-  showHeldView(path) {
-    var _a2, _b2, _c2;
-    if (((_a2 = this.pane) == null ? void 0 : _a2.isDeleted) && !this.model.get(path)) return;
-    const epoch = ++this.readEpoch;
-    const diff2 = ((_b2 = this.currentDiff) == null ? void 0 : _b2.path) === path ? this.currentDiff.result : null;
-    if (!this.applyComparison(path, diff2)) {
-      (_c2 = this.pane) == null ? void 0 : _c2.startRead();
-      void this.readFile(path, epoch);
-    }
-  }
-  /** Apply one accepted comparison and set whether refresh should read the file. */
-  applyComparison(path, diff2) {
-    var _a2, _b2;
-    this.currentDiff = { path, result: diff2 };
-    const shown = diff2 !== null && this.diffLeftFor !== path;
-    if (diff2 && "loadFailed" in diff2) (_a2 = this.pane) == null ? void 0 : _a2.showDiffLoadFailure(shown);
-    else (_b2 = this.pane) == null ? void 0 : _b2.setDiff(diff2, shown);
-    this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
-    return shown;
+  renderOpenFile(state) {
+    var _a2;
+    (_a2 = this.pane) == null ? void 0 : _a2.render(state);
+    const path = state.path;
+    const changedDiff = state.mode === "diff" && state.comparison.kind !== "none" && state.view.kind !== "deleted";
+    this.loader.setOpenFile(path && !changedDiff && fileKind(path) !== "binary" ? path : null);
   }
   /** The change of a file, no diff, or a failure to load the diff renderer. */
-  async diffFor(path) {
+  async compareFile(path) {
     var _a2, _b2;
-    if (!this.diffValue) return null;
+    if (!this.diffValue) return { kind: "none" };
     let versions;
     try {
       const result = await this.diffValue(path);
-      if (result === null || result === void 0) return null;
+      if (result === null || result === void 0) return { kind: "none" };
       if (!isDiffVersions(result)) throw new TypeError("diff must return { before, after } with text or nothing for each, or null");
       versions = result;
     } catch (error) {
       console.error("tv-code diff failed", error);
-      return null;
+      return { kind: "none" };
     }
     let module;
     try {
       module = await loadDiffModule();
     } catch (error) {
       console.error("tv-code diff module failed to load", error);
-      return { loadFailed: true };
+      return { kind: "module-error" };
     }
     try {
       const languageId = ((_b2 = detectLanguage(path, (_a2 = this.model.get(path)) == null ? void 0 : _a2.language)) == null ? void 0 : _b2.id) ?? null;
       return {
+        kind: "ready",
         change: module.compareVersions(path, versions.before ?? "", versions.after ?? "", languageId),
         createView: (onDrawn) => new module.DiffView(onDrawn)
       };
     } catch (error) {
       console.error("tv-code diff failed", error);
-      return null;
+      return { kind: "none" };
     }
   }
   maybeOpenReadme() {
@@ -23899,13 +23982,10 @@ class TvCodeElement extends HTMLElement {
     this.setSelection(path, false);
   }
   setSelection(value, reader, readerLines = null) {
-    var _a2, _b2, _c2, _d2, _e2, _f, _g, _h, _i, _j;
+    var _a2, _b2, _c2, _d2, _e2, _f, _g, _h;
     const path = value ? normalizePath(value) : null;
     if (!path) this.autoOpened = true;
-    if (path !== this.selectedValue) {
-      this.pendingHeading = null;
-      this.diffLeftFor = null;
-    }
+    if (path !== this.selectedValue) this.pendingHeading = null;
     if (path !== this.selectedValue && this.singleFile && this.activeInput === "connection" && !((_a2 = this.connectionValue) == null ? void 0 : _a2.list)) {
       this.model.replace(path ? [{ path, type: "file" }] : []);
     }
@@ -23933,13 +24013,12 @@ class TvCodeElement extends HTMLElement {
     this.loader.setOpenFile(path && fileKind(path) !== "binary" ? path : null);
     (_f = this.sidebar) == null ? void 0 : _f.setSelected(path);
     if (path) {
-      (_g = this.pane) == null ? void 0 : _g.start(path);
-      (_h = this.pane) == null ? void 0 : _h.setEntry(this.model.get(path) ?? null);
-      if (!this.singleFile) void ((_i = this.sidebar) == null ? void 0 : _i.reveal(path));
-      void this.loadFile(path);
+      this.openFile.open(path);
+      (_g = this.pane) == null ? void 0 : _g.setEntry(this.model.get(path) ?? null);
+      if (!this.singleFile) void ((_h = this.sidebar) == null ? void 0 : _h.reveal(path));
     } else {
       this.setLines(null, false);
-      (_j = this.pane) == null ? void 0 : _j.showEmpty();
+      this.openFile.close();
     }
     if (reader && path) {
       this.recentPaths = [path, ...this.recentPaths.filter((recent) => recent !== path)];
@@ -23961,28 +24040,14 @@ class TvCodeElement extends HTMLElement {
     else this.setAttribute(name, value);
     this.reflecting = false;
   }
-  async loadFile(path, retry = false, showAnyway = false) {
-    var _a2, _b2;
-    if (((_a2 = this.pane) == null ? void 0 : _a2.isDeleted) && !this.model.get(path)) return;
-    const epoch = ++this.readEpoch;
-    const input = this.inputEpoch;
-    const request = ++this.diffRequest;
-    if (this.diffValue || ((_b2 = this.pane) == null ? void 0 : _b2.hasDiff)) {
-      const diff2 = await this.diffFor(path);
-      if (input !== this.inputEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane || this.pane.isDeleted && !this.model.get(path)) return;
-      if (this.applyComparison(path, diff2)) return;
-    } else this.applyComparison(path, null);
-    if (epoch !== this.readEpoch) return;
-    await this.readFile(path, epoch, retry, showAnyway);
-  }
-  /** Read an ordinary view without waiting for the page's diff function. */
-  async readFile(path, epoch, retry = false, showAnyway = false) {
-    var _a2, _b2, _c2, _d2, _e2, _f, _g, _h;
+  /** Read transport and decoding; OpenFile decides whether its result may appear. */
+  async readOpenFile(path, retry = false, showAnyway = false) {
+    var _a2;
     let result = null;
     const entry = this.model.get(path);
     const kind = fileKind(path);
     const imagePreview = kind === "image" && !(path.toLowerCase().endsWith(".svg") && this.showSource);
-    if (!entry && ((_a2 = this.model.get(parentPath(path))) == null ? void 0 : _a2.listing) === "listed") result = { kind: "failure", message: "File not found" };
+    if (!entry && ((_a2 = this.model.get(parentPath(path))) == null ? void 0 : _a2.listing) === "listed") result = { kind: "failure", message: "File not found", status: 404 };
     else if (kind === "binary") result = { kind: "binary" };
     else if (!showAnyway && (entry == null ? void 0 : entry.size) !== void 0 && entry.size > maximumBytes) result = { kind: "large", size: entry.size };
     else if (imagePreview && (entry == null ? void 0 : entry.src)) result = { kind: "binary" };
@@ -23997,17 +24062,7 @@ class TvCodeElement extends HTMLElement {
         }
       } else result = (entry == null ? void 0 : entry.src) ? { kind: "binary" } : { kind: "failure", message: "File has no content" };
     }
-    if (!result || epoch !== this.readEpoch || this.selectedValue !== path || ((_b2 = this.pane) == null ? void 0 : _b2.isDeleted) && !this.model.get(path)) return;
-    if (result.kind === "failure" && result.status === 404) {
-      if (this.selectedWasKnown) (_c2 = this.pane) == null ? void 0 : _c2.markDeleted();
-      else (_d2 = this.pane) == null ? void 0 : _d2.show({ kind: "failure", message: "File not found" });
-      return;
-    }
-    (_e2 = this.pane) == null ? void 0 : _e2.setEntry(this.model.get(path) ?? null);
-    if (((_f = this.model.get(path)) == null ? void 0 : _f.type) === "file") this.selectedWasKnown = true;
-    if ((_g = this.pane) == null ? void 0 : _g.hasBodyFor(path)) this.pane.update(result);
-    else (_h = this.pane) == null ? void 0 : _h.show(result);
-    this.revealHeading();
+    return result;
   }
   finderFiles() {
     const files = [];

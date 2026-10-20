@@ -10,6 +10,7 @@ import { MarkdownView } from "./markdown-view";
 import { binaryBody, ImageView, largeBody, type ImageSource } from "./media-view";
 import type { TreeNode } from "./tree-model";
 import type { LineRange } from "./types";
+import { initialPaneState, paneAppearance, type PaneState } from "./pane-state";
 
 /** Renders the currently selected file without owning input or navigation. */
 export class Pane {
@@ -23,9 +24,10 @@ export class Pane {
   private content = h("div", { className: "cv-pane-content" });
   private fadeTimer: ReturnType<typeof setTimeout> | null = null;
   private lineObserver: MutationObserver | null = null;
-  private currentPath: string | null = null;
+  private state: PaneState = initialPaneState;
+  private renderedRevision = -1;
+  private get currentPath(): string | null { return this.state.path; }
   private entry: TreeNode | null = null;
-  private deleted = false;
   private contentPath: string | null = null;
   private result: DecodedRead | null = null;
   private body: CodeView | MarkdownView | ImageView | null = null;
@@ -34,12 +36,15 @@ export class Pane {
   private wrapped = false;
   private source = false;
   private singleFile = false;
-  /** The change of the current file offered as its Diff view, and whether that view is shown. */
-  private diff: { change: FileChange | null; shown: boolean } | null = null;
+  private get diff(): { change: FileChange | null; shown: boolean } | null {
+    const comparison = this.state.comparison;
+    return comparison.kind === "none" ? null : { change: comparison.kind === "ready" ? comparison.change : null, shown: this.state.mode === "diff" };
+  }
   /** The diff in the content area, shown as the body of the current or previous file. */
   private diffBody: DiffView | null = null;
   /** A diff drawing unseen over the content it will replace. */
-  private pendingDiff: { view: DiffView; wrapper: HTMLElement } | null = null;
+  private pendingDiff: { ticket: number; view: DiffView; wrapper: HTMLElement } | null = null;
+  onDiffDrawn?: (ticket: number) => void;
   onRetry?: () => void;
   onReveal?: (path: string) => void;
   onLinesChange?: (lines: LineRange | null) => void;
@@ -57,17 +62,12 @@ export class Pane {
     this.findButton = find;
     this.header.append(this.openSidebarButton, this.pathArea, this.actions, find);
     this.element.append(this.header, this.progress, this.notice, this.content);
-    this.showEmpty();
+    this.render(initialPaneState);
   }
 
-  /** Whether the last successfully displayed body belongs to this path. */
+  /** Whether the drawn ordinary body belongs to this path. */
   hasBodyFor(path: string): boolean { return this.contentPath === path && this.result !== null; }
-  /** Whether the current file offers a Diff view. */
-  get hasDiff(): boolean { return this.diff !== null; }
-  /** Whether the Diff view of the current file is the view chosen. */
-  get diffShown(): boolean { return this.diff?.shown ?? false; }
-  /** Whether the current path has been marked as removed. */
-  get isDeleted(): boolean { return this.deleted; }
+
   /** Whether a Markdown image depends on a changed file. */
   referencesImage(path: string): boolean { return this.body instanceof MarkdownView && this.body.referencesImage(path); }
   /** Re-resolve one image without re-rendering the Markdown document. */
@@ -114,75 +114,69 @@ export class Pane {
   /** Apply the source preference; the owner reloads the active file. */
   setShowSource(value: boolean): void { this.source = value; this.renderActions(); }
 
-  /**
-   * Offer a change of the current file as its Diff view, or none. When the
-   * Diff view is shown, a diff of this file already in the content area
-   * draws the change in place. Otherwise a new diff draws unseen over the
-   * content already shown, which keeps its fade and progress bar, and
-   * replaces it once drawn, so the pane never shows an empty diff.
-   */
-  setDiff(diff: { change: FileChange; createView: (onDrawn: () => void) => DiffView } | null, shown: boolean): void {
-    this.diff = diff ? { change: diff.change, shown } : null;
-    if (shown) this.deleted = false;
-    if (!diff || !shown) this.discardPendingDiff();
-    else if (this.diffBody && this.contentPath === this.currentPath) {
-      this.diffBody.show(diff.change);
-      this.finishLoading();
+  /** Render one state; all visual consequences come from its appearance. */
+  render(state: PaneState): void {
+    const priorPath = this.state.path;
+    this.state = state;
+    const appearance = paneAppearance(state);
+    if (priorPath !== state.path) {
+      this.lineObserver?.disconnect();
+      this.lineObserver = null;
+      this.entry = null;
+      this.content.scrollTop = 0;
     }
-    else if (this.pendingDiff) this.pendingDiff.view.show(diff.change);
-    else {
-      // A failure shown in place of content is not kept.
-      if (this.contentPath === null) this.content.replaceChildren();
-      const view = diff.createView(() => this.revealDiff(view));
-      const wrapper = h("div", { className: "cv-pane-diff cv-pane-diff-pending" }, view.element);
-      this.pendingDiff = { view, wrapper };
-      this.content.append(wrapper);
-      view.show(diff.change);
-    }
-    this.renderPath();
-    this.renderActions();
-  }
-
-  /** Show a failed module load in the Diff view while retaining the other views. */
-  showDiffLoadFailure(shown: boolean): void {
-    this.diff = { change: null, shown };
-    this.discardPendingDiff();
-    if (shown) {
-      this.finishLoading();
-      this.notice.replaceChildren();
+    if (this.pendingDiff && this.pendingDiff.ticket !== appearance.pendingDiff?.ticket &&
+      !(state.view.kind === "diff" && this.pendingDiff.ticket === state.drawTicket)) this.discardPendingDiff();
+    if (appearance.body && this.renderedRevision !== appearance.body.revision) {
+      if (appearance.body.kind === "content") this.display(appearance.body.result, appearance.body.update);
+      else this.displayDiff(appearance.body);
+      this.renderedRevision = appearance.body.revision;
+    } else if (!appearance.body && !appearance.pendingDiff) {
+      this.renderedRevision = -1;
       this.clearBody();
-      this.result = null;
-      this.deleted = false;
       this.contentPath = null;
-      this.content.replaceChildren(this.failure("Could not load diff"));
+      this.result = null;
+      if (state.view.kind === "empty") this.renderEmpty();
+      else if (appearance.inlineError) this.content.replaceChildren(this.failure(appearance.inlineError));
+      else if (state.view.kind === "deleted") this.content.replaceChildren(h("div", { className: "cv-pane-empty", text: "File deleted" }));
+      else this.content.replaceChildren();
     }
+    if (appearance.pendingDiff && this.pendingDiff?.ticket !== appearance.pendingDiff.ticket) {
+      const pending = appearance.pendingDiff;
+      const view = pending.comparison.createView(() => this.onDiffDrawn?.(pending.ticket));
+      const wrapper = h("div", { className: "cv-pane-diff cv-pane-diff-pending" }, view.element);
+      this.pendingDiff = { ticket: pending.ticket, view, wrapper };
+      this.content.append(wrapper);
+      view.show(pending.comparison.change);
+    }
+    if (this.state !== state) return; // A synchronous diff draw dispatched a newer state.
     this.renderPath();
     this.renderActions();
+    this.notice.replaceChildren(...(appearance.notice ? [this.failure(appearance.notice)] : []));
+    this.progress.classList.toggle("cv-pane-progress-active", appearance.progress);
+    if (!appearance.progress || !appearance.faded) {
+      if (this.fadeTimer) clearTimeout(this.fadeTimer);
+      this.fadeTimer = null;
+      this.content.classList.toggle("cv-pane-faded", appearance.faded);
+    } else if (!this.fadeTimer && !this.content.classList.contains("cv-pane-faded")) {
+      this.fadeTimer = setTimeout(() => {
+        this.fadeTimer = null;
+        if (paneAppearance(this.state).progress && paneAppearance(this.state).faded) this.content.classList.add("cv-pane-faded");
+      }, 200);
+    }
   }
 
-  private finishLoading(): void {
-    if (this.fadeTimer) clearTimeout(this.fadeTimer);
-    this.fadeTimer = null;
-    this.progress.classList.remove("cv-pane-progress-active");
-    this.content.classList.remove("cv-pane-faded");
-  }
-
-  /** Replace the content with a pending diff once it has drawn. */
-  private revealDiff(view: DiffView): void {
-    const pending = this.pendingDiff;
-    if (pending?.view !== view) return;
-    this.pendingDiff = null;
-    this.finishLoading();
-    this.notice.replaceChildren();
-    this.clearBody();
-    this.diffBody = view;
-    this.result = null;
-    this.deleted = false;
-    this.contentPath = this.currentPath;
-    pending.wrapper.classList.remove("cv-pane-diff-pending");
-    for (const child of [...this.content.children]) if (child !== pending.wrapper) child.remove();
-    this.renderPath();
-    this.renderActions();
+  private displayDiff(body: Extract<NonNullable<ReturnType<typeof paneAppearance>["body"]>, { kind: "diff" }>): void {
+    if (this.pendingDiff) {
+      const pending = this.pendingDiff;
+      this.pendingDiff = null;
+      this.clearBody();
+      this.diffBody = pending.view;
+      this.result = null;
+      this.contentPath = body.path;
+      pending.wrapper.classList.remove("cv-pane-diff-pending");
+      this.content.replaceChildren(pending.wrapper);
+    } else if (this.diffBody && this.contentPath === body.path) this.diffBody.show(body.comparison.change);
   }
 
   private discardPendingDiff(): void {
@@ -191,65 +185,11 @@ export class Pane {
     this.pendingDiff = null;
   }
 
-  /** Show an immediate new header and keep old content during a pending read. */
-  start(path: string): void {
-    this.lineObserver?.disconnect();
-    this.lineObserver = null;
-    this.currentPath = path;
-    this.entry = null;
-    this.result = null;
-    this.diff = null;
-    this.discardPendingDiff();
-    this.deleted = false;
-    this.renderPath();
-    this.renderActions();
-    this.notice.replaceChildren();
-    // With no file shown to keep, such as the empty state, the pane shows only its progress.
-    if (this.contentPath === null) { this.clearBody(); this.content.replaceChildren(); }
-    this.startRead();
-    this.content.scrollTop = 0;
-  }
-
-  /** Keep the previous body visible while another view of this file is read. */
-  startRead(): void {
-    this.progress.classList.add("cv-pane-progress-active");
-    this.content.classList.remove("cv-pane-faded");
-    if (this.fadeTimer) clearTimeout(this.fadeTimer);
-    this.fadeTimer = setTimeout(() => this.content.classList.add("cv-pane-faded"), 200);
-  }
-
-  /** Complete a first load, including an error shown in place of content. */
-  show(result: DecodedRead): void { this.display(result, false); }
-  /** Refresh the open body, preserving its viewport and marking code changes. */
-  update(result: DecodedRead): void {
-    if (result.kind === "failure") {
-      if (result.status === 404) this.markDeleted();
-      else { this.finishLoading(); this.showRefreshFailure(result.message); }
-      return;
-    }
-    this.display(result, true);
-  }
-
-  private display(result: DecodedRead, update: boolean): void {
-    if (this.fadeTimer) clearTimeout(this.fadeTimer);
-    this.fadeTimer = null;
-    this.progress.classList.remove("cv-pane-progress-active");
-    this.content.classList.remove("cv-pane-faded");
-    this.notice.replaceChildren();
-    if (result.kind === "failure") {
-      this.clearBody();
-      this.contentPath = null;
-      this.result = null;
-      this.content.replaceChildren(this.failure(result.message));
-      this.renderActions();
-      return;
-    }
+  private display(result: Exclude<DecodedRead, { kind: "failure" }>, update: boolean): void {
     const previous = this.result;
     const sameBody = update && this.contentPath === this.currentPath;
     this.result = result;
-    this.deleted = false;
     this.contentPath = this.currentPath;
-    this.renderPath();
     const path = this.currentPath ?? "";
     const kind = fileKind(path);
     const asSource = this.source && (kind === "markdown" || path.toLowerCase().endsWith(".svg"));
@@ -305,41 +245,9 @@ export class Pane {
         if (this.linesValue?.start !== requestedLines?.start || this.linesValue?.end !== requestedLines?.end) this.onMappedLines?.(this.linesValue);
       }
     } else this.replaceBody(binaryBody(path.split("/").at(-1) ?? path, this.entry?.size));
-    this.renderActions();
   }
 
-  /** Keep the last body dimmed when its file disappears. */
-  markDeleted(): void {
-    if (this.fadeTimer) clearTimeout(this.fadeTimer);
-    this.fadeTimer = null;
-    this.deleted = true;
-    this.renderPath();
-    this.notice.replaceChildren();
-    this.progress.classList.remove("cv-pane-progress-active");
-    if (this.contentPath !== this.currentPath) { this.clearBody(); this.content.replaceChildren(h("div", { className: "cv-pane-empty", text: "File deleted" })); }
-    this.content.classList.add("cv-pane-faded");
-  }
-
-  /** Keep content visible under a transient read failure and offer Retry. */
-  showRefreshFailure(message: string): void { this.notice.replaceChildren(this.failure(message)); }
-
-  /** Clear the selection and show the finder hint. */
-  showEmpty(): void {
-    if (this.fadeTimer) clearTimeout(this.fadeTimer);
-    this.fadeTimer = null;
-    this.currentPath = null;
-    this.entry = null;
-    this.diff = null;
-    this.discardPendingDiff();
-    this.deleted = false;
-    this.contentPath = null;
-    this.result = null;
-    this.clearBody();
-    this.renderPath();
-    this.renderActions();
-    this.progress.classList.remove("cv-pane-progress-active");
-    this.notice.replaceChildren();
-    this.content.classList.remove("cv-pane-faded");
+  private renderEmpty(): void {
     const shortcut = /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? "⌘" : "Ctrl";
     this.content.replaceChildren(h("div", { className: "cv-pane-empty cv-empty-state" },
       h("span", { className: "cv-empty-icon" }, svg(icons.file)),
@@ -386,7 +294,7 @@ export class Pane {
         h("span", { className: "cv-diff-additions", text: `+${change.additions}` }),
         h("span", { className: "cv-diff-deletions", text: `\u2212${change.deletions}` })));
     }
-    if (this.deleted) parts.push(h("span", { className: "cv-deleted", text: "Deleted" }));
+    if (paneAppearance(this.state).deleted) parts.push(h("span", { className: "cv-deleted", text: "Deleted" }));
     this.pathArea.replaceChildren(...parts);
   }
 
