@@ -60,6 +60,11 @@ test("the shipped copy instructions include bundled third-party notices", () => 
   expect(skill).toContain("copy `tv-code-diff.js` into the same folder");
 });
 
+test("the shipped skill describes Diff as an addition to each file's modes", () => {
+  const skill = readFileSync("packages/tv-code/dist/SKILL.md", "utf8");
+  expect(skill).toContain("adds **Diff** to the file's existing modes");
+});
+
 test("child tags show nested relative paths, dedented scripts and live edits", async ({ page }) => {
   await ready(page, '<tv-code><tv-code-folder path="src"><tv-code-file path="a.ts"><script type="text/plain">\n  one\n</script></tv-code-file></tv-code-folder><tv-code-file path="other.txt">Other</tv-code-file></tv-code>');
   await page.locator('.cv-row[data-path="src"]').click();

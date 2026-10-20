@@ -86,9 +86,10 @@ function action(name: 'Wrap lines' | 'Preview' | 'Source' | 'Diff', icon: 'wrap'
 }
 
 /** Preview, Source and Diff for Markdown or SVG; Preview and Diff for other images; Source and Diff for code. */
-function diffActions(view: Args['view'], { mode }: Diff): string {
+function diffActions(view: Args['view'], path: string, { mode }: Diff): string {
   const views = view === 'code' ? (['source', 'diff'] as const) :
-    view === 'image' ? (['preview', 'diff'] as const) : (['preview', 'source', 'diff'] as const);
+    view === 'image' && !path.toLowerCase().endsWith('.svg') ? (['preview', 'diff'] as const) :
+      (['preview', 'source', 'diff'] as const);
   const names = { preview: 'Preview', source: 'Source', diff: 'Diff' } as const;
   const toggle = views.map(name => action(names[name], name, mode === name)).join('');
   const wrap = mode !== 'diff' && (view === 'code' || mode === 'source') ? action('Wrap lines', 'wrap', false) : '';
@@ -101,7 +102,7 @@ function render({ path, view, closed = false, diff }: Args): string {
   crumbs.push(`<strong class="cv-path-file">${escapeHtml(segments.at(-1) ?? '')}</strong>`);
   const counts = diff?.additions !== undefined && diff.deletions !== undefined
     ? `<span class="cv-diff-counts"><span class="cv-diff-additions">+${diff.additions}</span><span class="cv-diff-deletions">\u2212${diff.deletions}</span></span>` : '';
-  const actions = diff ? diffActions(view, diff) : view === 'code'
+  const actions = diff ? diffActions(view, path, diff) : view === 'code'
     ? action('Wrap lines', 'wrap', false)
     : `<div class="cv-view-toggle" role="group" aria-label="View mode">${action('Preview', 'preview', true)}${action('Source', 'source', false)}</div>`;
   return `<header class="cv-pane-header"><button class="cv-button cv-open-sidebar" type="button" aria-label="Open sidebar" title="Open sidebar"${closed ? ' tabindex="0" aria-hidden="false"' : ''}>${icons.render({ name: 'sidebar' })}</button><div class="cv-pane-path">${crumbs.join('<span class="cv-path-separator">/</span>')}${counts}</div><div class="cv-pane-actions">${actions}</div><button class="cv-button cv-pane-action cv-find" type="button" title="Find file" aria-label="Find file">${icons.render({ name: 'search' })}</button></header>`;

@@ -118,7 +118,7 @@ If the environment documents no way to learn about changes, the view shows the f
 
 To show how the files differ from another version, such as another branch, give changed entries a `status` of `"added"`, `"modified"` or `"removed"` in `files` or in `list` results. The tree shows `A`, `M` or `D` after the name. Include removed files in the listing so the reader can open them, and read them from the other version.
 
-To show the diff of a changed file, assign `diff`: a function from a path to the two versions of the file, `{ before, after }`, or `null` for an unchanged file. It may be async. The element compares the versions, draws the diff and counts the added and removed lines itself. Leave out a version, or set it to `null`, for a file that does not exist on that side; it counts as empty, so an added file shows every line added. The view toggle in the header gains **Diff**, selected when the file opens, beside Preview and Source, and the counts follow the file name.
+To show the diff of a changed file, assign `diff`: a function from a path to the two versions of the file, `{ before, after }`, or `null` for an unchanged file. It may be async. The element compares the versions, draws the diff and counts the added and removed lines itself. Leave out a version, or set it to `null`, for a file that does not exist on that side; it counts as empty, so an added file shows every line added. The view toggle in the header adds **Diff** to the file's existing modes, selected when the file opens, and the counts follow the file name.
 
 ```js
 viewer.diff = async path => changes.has(path)

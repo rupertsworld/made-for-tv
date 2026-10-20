@@ -235,6 +235,22 @@ test('footnote markers and every repeated back-link scroll through fragment anch
   await expect(page.locator('body')).not.toHaveAttribute('data-link-events', /./);
 });
 
+test('a punctuation-labelled footnote navigates to its definition and back', async ({ page }) => {
+  await ready(page);
+  const filler = Array.from({ length: 80 }, (_, index) => `Paragraph ${index + 1}.`).join('\n\n');
+  await setMarkdown(page, `Claim.[^a:b]\n\n${filler}\n\n[^a:b]: Punctuated note.`);
+  const marker = page.locator('a[data-footnote-ref]');
+  const note = page.locator('section[data-footnotes] > ol > li');
+  const backlink = note.locator('a[data-footnote-backref]');
+  await marker.click();
+  expect(await page.evaluate(() => decodeURIComponent(location.hash.slice(1))))
+    .toBe(await note.getAttribute('id'));
+  expect(await note.evaluate(node => { const top = node.getBoundingClientRect().top; return top >= 0 && top < innerHeight; })).toBe(true);
+  await backlink.click();
+  expect(await page.evaluate(() => decodeURIComponent(location.hash.slice(1))))
+    .toBe(await marker.getAttribute('id'));
+});
+
 test('adjacent footnote markers sit tight, have separate enlarged targets, and navigate independently', async ({ page }) => {
   await ready(page);
   const filler = Array.from({ length: 80 }, (_, index) => `Paragraph ${index + 1}.`).join('\n\n');

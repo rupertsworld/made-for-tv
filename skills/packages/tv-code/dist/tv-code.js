@@ -14924,10 +14924,14 @@ function footnotes(prefix) {
         renderer(token2) {
           const footnoteToken = token2;
           if (!footnoteToken.definitions.length) return "";
+          const contents = [];
+          for (let index = 0; index < footnoteToken.definitions.length; index++) {
+            contents.push(this.parser.parse(footnoteToken.definitions[index].tokens).trimEnd());
+          }
           const items = [];
           for (let index = 0; index < footnoteToken.definitions.length; index++) {
             const definition = footnoteToken.definitions[index];
-            const content = this.parser.parse(definition.tokens).trimEnd();
+            const content = contents[index];
             const backlinks = definition.references.map((reference, referenceIndex) => {
               const suffix = referenceIndex === 0 ? "" : `<sup>${referenceIndex + 1}</sup>`;
               return `<a href="#${referenceId(prefix, reference)}">↩${suffix}</a>`;
@@ -15019,10 +15023,13 @@ function normalizeLabel(label) {
   return label.toLowerCase();
 }
 function definitionId(prefix, definition) {
-  return `${prefix}note-${encodeURIComponent(definition.label)}`;
+  return `${prefix}note-${encodedLabel(definition.label)}`;
 }
 function referenceId(prefix, reference) {
-  return `${prefix}ref-${reference.occurrence}-${encodeURIComponent(reference.definition.label)}`;
+  return `${prefix}ref-${reference.occurrence}-${encodedLabel(reference.definition.label)}`;
+}
+function encodedLabel(label) {
+  return Array.from(new TextEncoder().encode(label), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 const allowedTags = [
   "p",
@@ -23392,6 +23399,7 @@ class TvCodeElement extends HTMLElement {
     __publicField(this, "warmed", false);
     __publicField(this, "pendingHeading", null);
     __publicField(this, "diffValue", null);
+    __publicField(this, "currentDiff", null);
     /** The open file for which the reader chose another view than its diff. */
     __publicField(this, "diffLeftFor", null);
     __publicField(this, "onDocumentReady", () => {
@@ -23561,15 +23569,19 @@ class TvCodeElement extends HTMLElement {
     pane.onToggleWrap = () => this.toggleWrap();
     pane.onFind = () => this.openFinder();
     pane.onViewMode = (mode) => {
+      var _a2;
       const path = this.selectedValue;
       if (!path) return;
       this.diffLeftFor = mode === "diff" ? null : path;
       const source = mode === "source";
       if (mode !== "diff" && (fileKind(path) === "markdown" || path.toLowerCase().endsWith(".svg")) && source !== this.showSource) {
+        this.reflecting = true;
         this.showSource = source;
+        this.reflecting = false;
+        (_a2 = this.pane) == null ? void 0 : _a2.setShowSource(source);
         this.preferences.set("showSource", source);
       }
-      void this.loadFile(path);
+      this.showHeldView(path);
     };
     pane.onToggleSource = () => {
       this.showSource = !this.showSource;
@@ -23651,7 +23663,10 @@ class TvCodeElement extends HTMLElement {
     } else if (name === "wrap") (_c2 = this.pane) == null ? void 0 : _c2.setWrap(value !== null);
     else if (name === "show-source") {
       (_d2 = this.pane) == null ? void 0 : _d2.setShowSource(value !== null);
-      if (this.selectedValue) void this.loadFile(this.selectedValue);
+      if (this.selectedValue) {
+        this.diffLeftFor = this.selectedValue;
+        this.showHeldView(this.selectedValue);
+      }
     }
   }
   /** A reader toggle of line wrapping, remembered for the next visit. */
@@ -23766,22 +23781,33 @@ class TvCodeElement extends HTMLElement {
     }
     if (!path) this.maybeOpenReadme();
   }
-  /**
-   * Ask the page again for the versions of the open file after a refresh
-   * that covered it. A diff that is still offered updates in place; one that
-   * appears or goes away opens the file again.
-   */
+  /** Ask the page again after a refresh and apply only its latest answer. */
   async refreshDiff(path) {
-    const epoch = this.readEpoch;
+    const epoch = this.inputEpoch;
     const request = ++this.diffRequest;
     const diff2 = await this.diffFor(path);
-    if (epoch !== this.readEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane) return;
-    if (diff2 && "loadFailed" in diff2) {
-      this.pane.showDiffLoadFailure(this.diffLeftFor !== path);
-      return;
-    }
-    if (diff2 !== null !== this.pane.hasDiff) void this.loadFile(path);
-    else if (diff2) this.pane.setDiff(diff2, this.pane.diffShown);
+    if (epoch !== this.inputEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane) return;
+    const wasShown = this.pane.diffShown;
+    const shown = this.applyComparison(path, diff2);
+    if (shown) ++this.readEpoch;
+    else if (wasShown) void this.readFile(path, ++this.readEpoch);
+  }
+  /** Show a view using the last accepted comparison, without calling the page. */
+  showHeldView(path) {
+    var _a2;
+    const epoch = ++this.readEpoch;
+    const diff2 = ((_a2 = this.currentDiff) == null ? void 0 : _a2.path) === path ? this.currentDiff.result : null;
+    if (!this.applyComparison(path, diff2)) void this.readFile(path, epoch);
+  }
+  /** Apply one accepted comparison and set whether refresh should read the file. */
+  applyComparison(path, diff2) {
+    var _a2, _b2;
+    this.currentDiff = { path, result: diff2 };
+    const shown = diff2 !== null && this.diffLeftFor !== path;
+    if (diff2 && "loadFailed" in diff2) (_a2 = this.pane) == null ? void 0 : _a2.showDiffLoadFailure(shown);
+    else (_b2 = this.pane) == null ? void 0 : _b2.setDiff(diff2, shown);
+    this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
+    return shown;
   }
   /** The change of a file, no diff, or a failure to load the diff renderer. */
   async diffFor(path) {
@@ -23897,28 +23923,26 @@ class TvCodeElement extends HTMLElement {
     this.reflecting = false;
   }
   async loadFile(path, retry = false, showAnyway = false) {
-    var _a2, _b2, _c2, _d2, _e2, _f, _g, _h, _i, _j;
+    var _a2;
     const epoch = ++this.readEpoch;
+    const input = this.inputEpoch;
+    const request = ++this.diffRequest;
     if (this.diffValue || ((_a2 = this.pane) == null ? void 0 : _a2.hasDiff)) {
       const diff2 = await this.diffFor(path);
-      if (epoch !== this.readEpoch || this.selectedValue !== path) return;
-      if (diff2 && "loadFailed" in diff2) {
-        const shown = this.diffLeftFor !== path;
-        (_b2 = this.pane) == null ? void 0 : _b2.showDiffLoadFailure(shown);
-        this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
-        if (shown) return;
-      } else {
-        const shown = diff2 !== null && this.diffLeftFor !== path;
-        (_c2 = this.pane) == null ? void 0 : _c2.setDiff(diff2, shown);
-        this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
-        if (shown) return;
-      }
-    }
+      if (input !== this.inputEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane) return;
+      if (this.applyComparison(path, diff2)) return;
+    } else this.applyComparison(path, null);
+    if (epoch !== this.readEpoch) return;
+    await this.readFile(path, epoch, retry, showAnyway);
+  }
+  /** Read an ordinary view without waiting for the page's diff function. */
+  async readFile(path, epoch, retry = false, showAnyway = false) {
+    var _a2, _b2, _c2, _d2, _e2, _f, _g;
     let result = null;
     const entry = this.model.get(path);
     const kind = fileKind(path);
     const imagePreview = kind === "image" && !(path.toLowerCase().endsWith(".svg") && this.showSource);
-    if (!entry && ((_d2 = this.model.get(parentPath(path))) == null ? void 0 : _d2.listing) === "listed") result = { kind: "failure", message: "File not found" };
+    if (!entry && ((_a2 = this.model.get(parentPath(path))) == null ? void 0 : _a2.listing) === "listed") result = { kind: "failure", message: "File not found" };
     else if (kind === "binary") result = { kind: "binary" };
     else if (!showAnyway && (entry == null ? void 0 : entry.size) !== void 0 && entry.size > maximumBytes) result = { kind: "large", size: entry.size };
     else if (imagePreview && (entry == null ? void 0 : entry.src)) result = { kind: "binary" };
@@ -23935,14 +23959,14 @@ class TvCodeElement extends HTMLElement {
     }
     if (!result || epoch !== this.readEpoch || this.selectedValue !== path) return;
     if (result.kind === "failure" && result.status === 404) {
-      if (this.selectedWasKnown) (_e2 = this.pane) == null ? void 0 : _e2.markDeleted();
-      else (_f = this.pane) == null ? void 0 : _f.show({ kind: "failure", message: "File not found" });
+      if (this.selectedWasKnown) (_b2 = this.pane) == null ? void 0 : _b2.markDeleted();
+      else (_c2 = this.pane) == null ? void 0 : _c2.show({ kind: "failure", message: "File not found" });
       return;
     }
-    (_g = this.pane) == null ? void 0 : _g.setEntry(this.model.get(path) ?? null);
-    if (((_h = this.model.get(path)) == null ? void 0 : _h.type) === "file") this.selectedWasKnown = true;
-    if ((_i = this.pane) == null ? void 0 : _i.hasBodyFor(path)) this.pane.update(result);
-    else (_j = this.pane) == null ? void 0 : _j.show(result);
+    (_d2 = this.pane) == null ? void 0 : _d2.setEntry(this.model.get(path) ?? null);
+    if (((_e2 = this.model.get(path)) == null ? void 0 : _e2.type) === "file") this.selectedWasKnown = true;
+    if ((_f = this.pane) == null ? void 0 : _f.hasBodyFor(path)) this.pane.update(result);
+    else (_g = this.pane) == null ? void 0 : _g.show(result);
     this.revealHeading();
   }
   finderFiles() {

@@ -104,10 +104,16 @@ export function footnotes(prefix: string): MarkedExtension {
         renderer(token): string {
           const footnoteToken = token as FootnotesToken;
           if (!footnoteToken.definitions.length) return '';
+          const contents: string[] = [];
+          // Rendering a note may cite another note, including one already in
+          // this list. Gather every reachable citation before adding links back.
+          for (let index = 0; index < footnoteToken.definitions.length; index++) {
+            contents.push(this.parser.parse(footnoteToken.definitions[index].tokens).trimEnd());
+          }
           const items: string[] = [];
           for (let index = 0; index < footnoteToken.definitions.length; index++) {
             const definition = footnoteToken.definitions[index];
-            const content = this.parser.parse(definition.tokens).trimEnd();
+            const content = contents[index];
             const backlinks = definition.references.map((reference, referenceIndex) => {
               const suffix = referenceIndex === 0 ? '' : `<sup>${referenceIndex + 1}</sup>`;
               return `<a href="#${referenceId(prefix, reference)}">↩${suffix}</a>`;
@@ -206,9 +212,14 @@ function normalizeLabel(label: string): string {
 }
 
 function definitionId(prefix: string, definition: FootnoteDefinition): string {
-  return `${prefix}note-${encodeURIComponent(definition.label)}`;
+  return `${prefix}note-${encodedLabel(definition.label)}`;
 }
 
 function referenceId(prefix: string, reference: FootnoteReferenceToken): string {
-  return `${prefix}ref-${reference.occurrence}-${encodeURIComponent(reference.definition.label)}`;
+  return `${prefix}ref-${reference.occurrence}-${encodedLabel(reference.definition.label)}`;
+}
+
+/** Hex UTF-8 is unique for each label and cannot be decoded inside a fragment. */
+function encodedLabel(label: string): string {
+  return Array.from(new TextEncoder().encode(label), byte => byte.toString(16).padStart(2, '0')).join('');
 }

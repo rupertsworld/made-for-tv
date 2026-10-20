@@ -56,9 +56,9 @@ Footnote syntax inside an inline code span or fenced code block stays code. Cita
 
 A definition may have zero to three leading spaces. Four leading spaces make an indented code block instead. A definition can directly follow a paragraph without a blank line. Its body is a block container: the first paragraph may continue on following plain or indented lines; indented content after a blank line can form further paragraphs, lists, quotes or code blocks. A blank line followed by unindented text ends the definition. An unindented heading, list, fence or another definition also ends it, including after a hard-break line.
 
-The element appends an ordered footnotes list to the end of the rendered document. The list follows first-citation order and includes only definitions that the document cites. Each definition body renders as Markdown blocks, followed by links back to every place where it is cited. Footnote content may include ordinary links and wikilinks. Those links behave like the same links in the main text and dispatch `linkclick` when the [Links](#links) rules say they do.
+The element appends an ordered footnotes list to the end of the rendered document. The list follows first-citation order and includes only definitions that the document cites. Each definition body renders as Markdown blocks, followed by links back to every place where it is cited, including citations inside other footnotes. Footnote content may include ordinary links and wikilinks. Those links behave like the same links in the main text and dispatch `linkclick` when the [Links](#links) rules say they do.
 
-Footnote marker and back-link addresses begin with `#`, so the browser scrolls between the citation and the footnote without dispatching `linkclick`. The generated ids do not collide with heading ids, footnotes in another `<tv-markdown>` element, or other generated footnote ids on the page.
+Footnote marker and back-link addresses begin with `#`, so the browser scrolls between the citation and the footnote without dispatching `linkclick`, including when a label contains punctuation. The generated ids do not collide with heading ids, footnotes in another `<tv-markdown>` element, or other generated footnote ids on the page.
 
 ## Frontmatter
 

@@ -380,6 +380,101 @@ test("an older diff refresh cannot replace a newer result or its counts", async 
   expect(await diffLines(page)).not.toContainEqual(["change-addition", "stale"]);
 });
 
+test("a refresh that removes a diff cannot later overwrite a newer changed version", async ({ page }) => {
+  await ready(page);
+  await page.locator('tv-code').evaluate(viewer => {
+    const state = { calls: 0, newer: false, release: null as null | ((value: unknown) => void) };
+    (window as any).state = state;
+    (viewer as any).diff = () => {
+      state.calls++;
+      if (state.calls === 1) return { before: 'old\n', after: 'initial\n' };
+      if (state.calls === 2) return null;
+      if (!state.newer) return new Promise(resolve => { state.release = resolve; });
+      return { before: 'old\n', after: 'latest\nextra\n' };
+    };
+    (viewer as any).connection = { list: () => [{ name: 'changed.ts', type: 'file' }], read: () => 'plain\n' };
+    (viewer as any).selected = 'changed.ts';
+  });
+  await expect(diffBody(page)).toBeVisible();
+  await page.locator('tv-code').evaluate(viewer => (viewer as any).refresh('changed.ts'));
+  await expect.poll(() => page.evaluate(() => Boolean((window as any).state.release || document.querySelector('.cv-code-text')))).toBe(true);
+  await page.locator('tv-code').evaluate(viewer => { (window as any).state.newer = true; (viewer as any).refresh('changed.ts'); });
+  await expect(counts(page)).toHaveText('+2\u22121');
+  expect(await diffLines(page)).toContainEqual(['change-addition', 'extra']);
+  await page.evaluate(() => (window as any).state.release?.({ before: 'old\n', after: 'stale\n' }));
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => (window as any).state.calls)).toBe(3);
+  await expect(counts(page)).toHaveText('+2\u22121');
+  expect(await diffLines(page)).toContainEqual(['change-addition', 'extra']);
+  expect(await diffLines(page)).not.toContainEqual(['change-addition', 'stale']);
+});
+
+test("mode changes reuse the held comparison while the diff function stalls", async ({ page }) => {
+  await ready(page);
+  await page.locator('tv-code').evaluate(viewer => {
+    const state = { calls: 0, reads: 0 };
+    (window as any).state = state;
+    (viewer as any).diff = () => {
+      state.calls++;
+      return state.calls === 1 ? { before: 'old\n', after: 'new\n' } : new Promise(() => {});
+    };
+    (viewer as any).connection = {
+      list: () => [{ name: 'changed.ts', type: 'file' }],
+      read: () => { state.reads++; return 'new\n'; },
+    };
+    (viewer as any).selected = 'changed.ts';
+  });
+  await expect(diffBody(page)).toBeVisible();
+  await mode(page, 'Source').click();
+  await expect(page.locator('.cv-code-view')).toContainText('new');
+  await mode(page, 'Diff').click();
+  await expect(diffBody(page)).toBeVisible();
+  expect(await page.evaluate(() => ({ calls: (window as any).state.calls, reads: (window as any).state.reads }))).toEqual({ calls: 1, reads: 1 });
+});
+
+test("a mode change keeps a newer comparison already in flight", async ({ page }) => {
+  await ready(page);
+  await page.locator('tv-code').evaluate(viewer => {
+    (viewer as any).diff = () => ({ before: 'old\n', after: 'first\n' });
+    (viewer as any).files = { 'changed.ts': 'source\n' };
+    (viewer as any).selected = 'changed.ts';
+  });
+  await expect(diffBody(page)).toBeVisible();
+  await page.locator('tv-code').evaluate(viewer => {
+    (viewer as any).diff = () => new Promise(resolve => { (window as any).finishComparison = resolve; });
+  });
+  await mode(page, 'Source').click();
+  await expect(page.locator('.cv-code-view')).toContainText('source');
+  await page.evaluate(() => (window as any).finishComparison({ before: 'old\n', after: 'second\nextra\n' }));
+  await expect(counts(page)).toHaveText('+2\u22121');
+  await expectModes(page, ['Source', 'Diff'], 'Source');
+});
+
+for (const [path, content] of [
+  ['README.md', '# Current'],
+  ['icon.svg', '<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>'],
+] as const) {
+  test(`${path} view clicks do not request another comparison`, async ({ page }) => {
+    await ready(page);
+    await page.locator('tv-code').evaluate((viewer, { path, content }) => {
+      const state = { calls: 0 };
+      (window as any).state = state;
+      (viewer as any).diff = () => {
+        state.calls++;
+        return state.calls === 1 ? { before: 'before', after: content } : new Promise(() => {});
+      };
+      (viewer as any).files = { [path]: content };
+      (viewer as any).selected = path;
+    }, { path, content });
+    await expect(diffBody(page)).toBeVisible();
+    await mode(page, 'Source').click();
+    await expect(page.locator('.cv-code-text')).toContainText(content);
+    await mode(page, 'Preview').click();
+    await expect(page.locator(path.endsWith('.md') ? '.cv-markdown-view' : '.cv-media-image')).toBeVisible();
+    expect(await page.evaluate(() => (window as any).state.calls)).toBe(1);
+  });
+}
+
 test("a diff draws unseen behind the previous content and replaces it once drawn", async ({ page }) => {
   await ready(page);
   const release = await holdDiffModule(page);

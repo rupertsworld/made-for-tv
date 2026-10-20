@@ -188,6 +188,28 @@ First claim.[^shared] Another source.[^other] Repeated claim.[^shared]
     expect(markers.every(marker => marker.id !== element.querySelector('h1')?.id)).toBe(true);
   });
 
+  it('includes citations in later notes in an earlier note’s backlinks', () => {
+    const element = render(`First.[^a] Second.[^b]
+
+[^a]: First note.
+[^b]: Second note cites first.[^a]`);
+    const notes = [...element.querySelectorAll<HTMLLIElement>('section[data-footnotes] > ol > li')];
+    const references = [...element.querySelectorAll<HTMLAnchorElement>('a[data-footnote-ref]')];
+    const backlinks = [...notes[0].querySelectorAll<HTMLAnchorElement>('a[data-footnote-backref]')];
+    expect(references.map(link => link.textContent)).toEqual(['1', '2', '1']);
+    expect(backlinks.map(link => link.getAttribute('href'))).toEqual([`#${references[0].id}`, `#${references[2].id}`]);
+  });
+
+  it('uses fragment-safe ids for labels with punctuation', () => {
+    const element = render(`Claim.[^a:b]
+
+[^a:b]: Punctuated note.`);
+    const reference = element.querySelector<HTMLAnchorElement>('a[data-footnote-ref]')!;
+    const note = element.querySelector<HTMLLIElement>('section[data-footnotes] > ol > li')!;
+    expect(note.id).not.toContain('%');
+    expect(decodeURIComponent(reference.getAttribute('href')!.slice(1))).toBe(note.id);
+  });
+
   it('renders inline Markdown inside cited definitions and omits definitions without citations', () => {
     const element = render(`A sourced claim.[^source]
 

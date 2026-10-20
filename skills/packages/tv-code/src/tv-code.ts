@@ -70,6 +70,7 @@ export class TvCodeElement extends HTMLElement {
   private warmed = false;
   private pendingHeading: { path: string; fragment: string } | null = null;
   private diffValue: DiffFunction | null = null;
+  private currentDiff: { path: string; result: DiffResult } | null = null;
   /** The open file for which the reader chose another view than its diff. */
   private diffLeftFor: string | null = null;
 
@@ -185,10 +186,13 @@ export class TvCodeElement extends HTMLElement {
       const source = mode === "source";
       // Choosing Preview or Source changes the remembered choice, as the two-way toggle does.
       if (mode !== "diff" && (fileKind(path) === "markdown" || path.toLowerCase().endsWith(".svg")) && source !== this.showSource) {
+        this.reflecting = true;
         this.showSource = source;
+        this.reflecting = false;
+        this.pane?.setShowSource(source);
         this.preferences.set("showSource", source);
       }
-      void this.loadFile(path);
+      this.showHeldView(path);
     };
     pane.onToggleSource = () => { this.showSource = !this.showSource; this.preferences.set("showSource", this.showSource); };
     pane.onLinesChange = lines => this.setLines(formatLines(lines), true, false);
@@ -255,7 +259,10 @@ export class TvCodeElement extends HTMLElement {
     else if (name === "dim") { this.model.setDimPatterns(value); this.sidebar?.render(); }
     else if (name === "label") { const label = value || "Files"; this.sidebar?.setLabel(label); }
     else if (name === "wrap") this.pane?.setWrap(value !== null);
-    else if (name === "show-source") { this.pane?.setShowSource(value !== null); if (this.selectedValue) void this.loadFile(this.selectedValue); }
+    else if (name === "show-source") {
+      this.pane?.setShowSource(value !== null);
+      if (this.selectedValue) { this.diffLeftFor = this.selectedValue; this.showHeldView(this.selectedValue); }
+    }
   }
 
   /** A reader toggle of line wrapping, remembered for the next visit. */
@@ -369,22 +376,33 @@ export class TvCodeElement extends HTMLElement {
     if (!path) this.maybeOpenReadme();
   }
 
-  /**
-   * Ask the page again for the versions of the open file after a refresh
-   * that covered it. A diff that is still offered updates in place; one that
-   * appears or goes away opens the file again.
-   */
+  /** Ask the page again after a refresh and apply only its latest answer. */
   private async refreshDiff(path: string): Promise<void> {
-    const epoch = this.readEpoch;
+    const epoch = this.inputEpoch;
     const request = ++this.diffRequest;
     const diff = await this.diffFor(path);
-    if (epoch !== this.readEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane) return;
-    if (diff && "loadFailed" in diff) {
-      this.pane.showDiffLoadFailure(this.diffLeftFor !== path);
-      return;
-    }
-    if ((diff !== null) !== this.pane.hasDiff) void this.loadFile(path);
-    else if (diff) this.pane.setDiff(diff, this.pane.diffShown);
+    if (epoch !== this.inputEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane) return;
+    const wasShown = this.pane.diffShown;
+    const shown = this.applyComparison(path, diff);
+    if (shown) ++this.readEpoch;
+    else if (wasShown) void this.readFile(path, ++this.readEpoch);
+  }
+
+  /** Show a view using the last accepted comparison, without calling the page. */
+  private showHeldView(path: string): void {
+    const epoch = ++this.readEpoch;
+    const diff = this.currentDiff?.path === path ? this.currentDiff.result : null;
+    if (!this.applyComparison(path, diff)) void this.readFile(path, epoch);
+  }
+
+  /** Apply one accepted comparison and set whether refresh should read the file. */
+  private applyComparison(path: string, diff: DiffResult): boolean {
+    this.currentDiff = { path, result: diff };
+    const shown = diff !== null && this.diffLeftFor !== path;
+    if (diff && "loadFailed" in diff) this.pane?.showDiffLoadFailure(shown);
+    else this.pane?.setDiff(diff, shown);
+    this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
+    return shown;
   }
 
   /** The change of a file, no diff, or a failure to load the diff renderer. */
@@ -483,22 +501,21 @@ export class TvCodeElement extends HTMLElement {
 
   private async loadFile(path: string, retry = false, showAnyway = false): Promise<void> {
     const epoch = ++this.readEpoch;
+    const input = this.inputEpoch;
+    const request = ++this.diffRequest;
     if (this.diffValue || this.pane?.hasDiff) {
       // A file shown as its diff is not read.
       const diff = await this.diffFor(path);
-      if (epoch !== this.readEpoch || this.selectedValue !== path) return;
-      if (diff && "loadFailed" in diff) {
-        const shown = this.diffLeftFor !== path;
-        this.pane?.showDiffLoadFailure(shown);
-        this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
-        if (shown) return;
-      } else {
-        const shown = diff !== null && this.diffLeftFor !== path;
-        this.pane?.setDiff(diff, shown);
-        this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
-        if (shown) return;
-      }
+      if (input !== this.inputEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane) return;
+      if (this.applyComparison(path, diff)) return;
     }
+    else this.applyComparison(path, null);
+    if (epoch !== this.readEpoch) return;
+    await this.readFile(path, epoch, retry, showAnyway);
+  }
+
+  /** Read an ordinary view without waiting for the page's diff function. */
+  private async readFile(path: string, epoch: number, retry = false, showAnyway = false): Promise<void> {
     let result: DecodedRead | null = null;
     const entry = this.model.get(path);
     const kind = fileKind(path);

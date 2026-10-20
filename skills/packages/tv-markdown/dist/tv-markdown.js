@@ -3248,10 +3248,14 @@ function footnotes(prefix) {
         renderer(token) {
           const footnoteToken = token;
           if (!footnoteToken.definitions.length) return "";
+          const contents = [];
+          for (let index = 0; index < footnoteToken.definitions.length; index++) {
+            contents.push(this.parser.parse(footnoteToken.definitions[index].tokens).trimEnd());
+          }
           const items = [];
           for (let index = 0; index < footnoteToken.definitions.length; index++) {
             const definition = footnoteToken.definitions[index];
-            const content = this.parser.parse(definition.tokens).trimEnd();
+            const content = contents[index];
             const backlinks = definition.references.map((reference, referenceIndex) => {
               const suffix = referenceIndex === 0 ? "" : `<sup>${referenceIndex + 1}</sup>`;
               return `<a href="#${referenceId(prefix, reference)}">↩${suffix}</a>`;
@@ -3343,10 +3347,13 @@ function normalizeLabel(label) {
   return label.toLowerCase();
 }
 function definitionId(prefix, definition) {
-  return `${prefix}note-${encodeURIComponent(definition.label)}`;
+  return `${prefix}note-${encodedLabel(definition.label)}`;
 }
 function referenceId(prefix, reference) {
-  return `${prefix}ref-${reference.occurrence}-${encodeURIComponent(reference.definition.label)}`;
+  return `${prefix}ref-${reference.occurrence}-${encodedLabel(reference.definition.label)}`;
+}
+function encodedLabel(label) {
+  return Array.from(new TextEncoder().encode(label), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 const allowedTags = [
   "p",
