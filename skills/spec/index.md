@@ -56,7 +56,7 @@ Each skill has one name, used for its specification folder, package folder, pack
 
 When the Vite module graph contains third-party code, the build also emits `THIRD-PARTY-NOTICES.txt`. It contains the published licence files of every bundled npm package and the separate upstream terms supplied for any bundled Shiki TextMate grammars or themes. The build emits no notices file when the module graph contains no third-party code.
 
-A built skill is self-contained. An agent installs it by copying or linking `packages/<skill>/dist/` into its skills directory as a folder named after the skill, and an artifact copies the JavaScript and CSS next to its `index.html`.
+A built skill is self-contained. An agent installs it by copying or linking `packages/<skill>/dist/` into its skills directory as a folder named after the skill. An artifact copies the JavaScript and CSS next to its `index.html`, along with `THIRD-PARTY-NOTICES.txt` when the build emits it.
 
 Each `dist/` folder is committed, so the built files can be used straight from the repository without a build. A change to a package or a specification is committed together with the rebuilt skill.
 

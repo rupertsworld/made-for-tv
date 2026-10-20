@@ -21,11 +21,21 @@ import type { DiffView, FileChange } from "./tv-code-diff";
  * emits the module as tv-code-diff.js, beside tv-code.js.
  */
 let diffModule: Promise<typeof import("./tv-code-diff")> | undefined;
+let diffModuleAttempts = 0;
 function loadDiffModule(): Promise<typeof import("./tv-code-diff")> {
-  // A failed load, such as of a file not copied, is tried again on the next diff.
-  diffModule ??= import("./tv-code-diff").catch(error => { diffModule = undefined; throw error; });
+  // Browsers cache failed module imports by URL. A later attempt needs a new
+  // URL after the missing file has been copied into place.
+  if (!diffModule) {
+    const attempt = diffModuleAttempts++;
+    const request: Promise<typeof import("./tv-code-diff")> = attempt === 0
+      ? import("./tv-code-diff")
+      : import(/* @vite-ignore */ `./tv-code-diff.js?retry=${attempt}`);
+    diffModule = request.catch(error => { diffModule = undefined; throw error; });
+  }
   return diffModule;
 }
+
+type DiffResult = { change: FileChange; createView: (onDrawn: () => void) => DiffView } | { loadFailed: true } | null;
 
 /** The view element; it never owns persistence or transport details. */
 export class TvCodeElement extends HTMLElement {
@@ -49,6 +59,7 @@ export class TvCodeElement extends HTMLElement {
   private pendingRestore = false;
   private inputEpoch = 0;
   private readEpoch = 0;
+  private diffRequest = 0;
   private autoOpened = false;
   private reflecting = false;
   private selectedWasKnown = false;
@@ -365,20 +376,31 @@ export class TvCodeElement extends HTMLElement {
    */
   private async refreshDiff(path: string): Promise<void> {
     const epoch = this.readEpoch;
+    const request = ++this.diffRequest;
     const diff = await this.diffFor(path);
-    if (epoch !== this.readEpoch || this.selectedValue !== path || !this.pane) return;
+    if (epoch !== this.readEpoch || request !== this.diffRequest || this.selectedValue !== path || !this.pane) return;
+    if (diff && "loadFailed" in diff) {
+      this.pane.showDiffLoadFailure(this.diffLeftFor !== path);
+      return;
+    }
     if ((diff !== null) !== this.pane.hasDiff) void this.loadFile(path);
     else if (diff) this.pane.setDiff(diff, this.pane.diffShown);
   }
 
-  /** The change of a file from the versions the page gives, or null for an unchanged file or a failure. */
-  private async diffFor(path: string): Promise<{ change: FileChange; createView: (onDrawn: () => void) => DiffView } | null> {
+  /** The change of a file, no diff, or a failure to load the diff renderer. */
+  private async diffFor(path: string): Promise<DiffResult> {
     if (!this.diffValue) return null;
+    let versions: DiffVersions;
     try {
-      const versions: unknown = await this.diffValue(path);
-      if (versions === null || versions === undefined) return null;
-      if (!isDiffVersions(versions)) throw new TypeError("diff must return { before, after } with text or nothing for each, or null");
-      const module = await loadDiffModule();
+      const result: unknown = await this.diffValue(path);
+      if (result === null || result === undefined) return null;
+      if (!isDiffVersions(result)) throw new TypeError("diff must return { before, after } with text or nothing for each, or null");
+      versions = result;
+    } catch (error) { console.error("tv-code diff failed", error); return null; }
+    let module: typeof import("./tv-code-diff");
+    try { module = await loadDiffModule(); }
+    catch (error) { console.error("tv-code diff module failed to load", error); return { loadFailed: true }; }
+    try {
       const languageId = detectLanguage(path, this.model.get(path)?.language)?.id ?? null;
       return {
         change: module.compareVersions(path, versions.before ?? "", versions.after ?? "", languageId),
@@ -465,10 +487,17 @@ export class TvCodeElement extends HTMLElement {
       // A file shown as its diff is not read.
       const diff = await this.diffFor(path);
       if (epoch !== this.readEpoch || this.selectedValue !== path) return;
-      const shown = diff !== null && this.diffLeftFor !== path;
-      this.pane?.setDiff(diff, shown);
-      this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
-      if (shown) return;
+      if (diff && "loadFailed" in diff) {
+        const shown = this.diffLeftFor !== path;
+        this.pane?.showDiffLoadFailure(shown);
+        this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
+        if (shown) return;
+      } else {
+        const shown = diff !== null && this.diffLeftFor !== path;
+        this.pane?.setDiff(diff, shown);
+        this.loader.setOpenFile(shown || fileKind(path) === "binary" ? null : path);
+        if (shown) return;
+      }
     }
     let result: DecodedRead | null = null;
     const entry = this.model.get(path);

@@ -85,9 +85,10 @@ function action(name: 'Wrap lines' | 'Preview' | 'Source' | 'Diff', icon: 'wrap'
   return `<button class="cv-button cv-pane-action" type="button" title="${name}" aria-label="${name}" aria-pressed="${pressed}">${icons.render({ name: icon })}</button>`;
 }
 
-/** Preview, Source and Diff for a changed Markdown or SVG file; Source and Diff for code. */
+/** Preview, Source and Diff for Markdown or SVG; Preview and Diff for other images; Source and Diff for code. */
 function diffActions(view: Args['view'], { mode }: Diff): string {
-  const views = view === 'code' ? (['source', 'diff'] as const) : (['preview', 'source', 'diff'] as const);
+  const views = view === 'code' ? (['source', 'diff'] as const) :
+    view === 'image' ? (['preview', 'diff'] as const) : (['preview', 'source', 'diff'] as const);
   const names = { preview: 'Preview', source: 'Source', diff: 'Diff' } as const;
   const toggle = views.map(name => action(names[name], name, mode === name)).join('');
   const wrap = mode !== 'diff' && (view === 'code' || mode === 'source') ? action('Wrap lines', 'wrap', false) : '';

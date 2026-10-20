@@ -35,7 +35,7 @@ export class Pane {
   private source = false;
   private singleFile = false;
   /** The change of the current file offered as its Diff view, and whether that view is shown. */
-  private diff: { change: FileChange; shown: boolean } | null = null;
+  private diff: { change: FileChange | null; shown: boolean } | null = null;
   /** The diff in the content area, shown as the body of the current or previous file. */
   private diffBody: DiffView | null = null;
   /** A diff drawing unseen over the content it will replace. */
@@ -124,7 +124,10 @@ export class Pane {
   setDiff(diff: { change: FileChange; createView: (onDrawn: () => void) => DiffView } | null, shown: boolean): void {
     this.diff = diff ? { change: diff.change, shown } : null;
     if (!diff || !shown) this.discardPendingDiff();
-    else if (this.diffBody && this.contentPath === this.currentPath) this.diffBody.show(diff.change);
+    else if (this.diffBody && this.contentPath === this.currentPath) {
+      this.diffBody.show(diff.change);
+      this.finishLoading();
+    }
     else if (this.pendingDiff) this.pendingDiff.view.show(diff.change);
     else {
       // A failure shown in place of content is not kept.
@@ -139,15 +142,36 @@ export class Pane {
     this.renderActions();
   }
 
+  /** Show a failed module load in the Diff view while retaining the other views. */
+  showDiffLoadFailure(shown: boolean): void {
+    this.diff = { change: null, shown };
+    this.discardPendingDiff();
+    if (shown) {
+      this.finishLoading();
+      this.notice.replaceChildren();
+      this.clearBody();
+      this.result = null;
+      this.deleted = false;
+      this.contentPath = null;
+      this.content.replaceChildren(this.failure("Could not load diff"));
+    }
+    this.renderPath();
+    this.renderActions();
+  }
+
+  private finishLoading(): void {
+    if (this.fadeTimer) clearTimeout(this.fadeTimer);
+    this.fadeTimer = null;
+    this.progress.classList.remove("cv-pane-progress-active");
+    this.content.classList.remove("cv-pane-faded");
+  }
+
   /** Replace the content with a pending diff once it has drawn. */
   private revealDiff(view: DiffView): void {
     const pending = this.pendingDiff;
     if (pending?.view !== view) return;
     this.pendingDiff = null;
-    if (this.fadeTimer) clearTimeout(this.fadeTimer);
-    this.fadeTimer = null;
-    this.progress.classList.remove("cv-pane-progress-active");
-    this.content.classList.remove("cv-pane-faded");
+    this.finishLoading();
     this.notice.replaceChildren();
     this.clearBody();
     this.diffBody = view;

@@ -232,7 +232,7 @@ interface DiffVersions {
 
 A version that is absent, `null` or `undefined` is a file that does not exist on that side, compared as empty text: every line of an added file is an added line, and every line of a removed file a removed line. A function that throws or rejects, or returns any other value, counts as `null`, and the element logs the error.
 
-The element calls the function when a file is opened, when `diff` is assigned, when the input changes, and when a [refresh](#live-updates) covers the open file: `refresh()`, or `refresh(path)` with the path of the open file. It calls nothing when `diff` is unset.
+The element calls the function when a file is opened, when `diff` is assigned, when the input changes, and when a [refresh](#live-updates) covers the open file: `refresh()`, or `refresh(path)` with the path of the open file. It calls nothing when `diff` is unset. If refreshes overlap, only the latest request updates the diff and its counts.
 
 - For a file with a diff, the view-mode toggle in the header gains **Diff**, with a diff icon, after the views the file already has: Preview, Source and Diff for Markdown and SVG files; Preview and Diff for other images; Source and Diff for other files. Diff is selected when the file is opened.
 - With Diff selected, the content area shows the diff, and the element does not read the file. Wrap lines does not apply.
@@ -241,6 +241,7 @@ The element calls the function when a file is opened, when `diff` is assigned, w
 - Choosing Preview or Source shows the file as usual, with its actions; for Markdown and SVG files it sets `show-source` as the two-way toggle does. The choice lasts while the file stays open; opening a file again selects Diff.
 - The header shows the number of added and removed lines after the file name, as `+40 −39`, in the colours for added and removed lines, in every view mode. Equal versions show no counts.
 - When a refresh makes the function return `null` for the open file, or versions for a file that had none, the pane opens the file again with or without its diff. Files without a diff keep the header and toggle described above.
+- If `tv-code-diff.js` fails to load, the Diff view shows a short error and a Retry button in place of the diff. Preview or Source still opens the file. Retry attempts to load the diff module again.
 
 ### Code
 
@@ -399,7 +400,7 @@ The variables are named `--tv-code-syntax-<role>`. Comments are italic. Tokens w
 
 The built skill, in `skills/tv-code/`, contains:
 
-- `SKILL.md`: when to use the skill; how to load it (copy `tv-code.js` and `tv-code.css` next to the artifact `index.html`, and `tv-code-diff.js` too for diffs); the three inputs with short examples; connecting a service through a connection and its change signal through `refresh`; keeping the selection in the address; and the attributes and events;
+- `SKILL.md`: when to use the skill; how to load it (copy `tv-code.js`, `tv-code.css` and `THIRD-PARTY-NOTICES.txt` next to the artifact `index.html`, and `tv-code-diff.js` too for diffs); the three inputs with short examples; connecting a service through a connection and its change signal through `refresh`; keeping the selection in the address; and the attributes and events;
 - `tv-code.js`, with the highlighter, its languages and `tv-markdown` bundled;
 - `tv-code-diff.js`, the diff module, with `@pierre/diffs` and the GitHub light and dark themes bundled;
 - `tv-code.css`, the specification stylesheet followed by the `tv-markdown` stylesheet;

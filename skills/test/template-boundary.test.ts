@@ -5,6 +5,7 @@ import ts from 'typescript';
 import { expect, test } from 'vitest';
 
 type ImportedModule = { name: string; typeOnly: boolean };
+const diffRetryFile = path.join('packages', 'tv-code', 'src', 'tv-code.ts');
 
 function importedModules(file: string): ImportedModule[] {
   const source = ts.createSourceFile(file, readFileSync(file, 'utf8'),
@@ -21,8 +22,19 @@ function importedModules(file: string): ImportedModule[] {
       && (node.expression.kind === ts.SyntaxKind.ImportKeyword
         || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) {
       const [argument] = node.arguments;
-      modules.push({ name: argument && ts.isStringLiteral(argument)
-        ? argument.text : '<dynamic import or require>', typeOnly: false });
+      // This retry varies only the query string of the shipped diff module.
+      // Keep rejecting other computed imports: their destination cannot be
+      // checked against the specification boundary.
+      const diffRetry = file === diffRetryFile
+        && node.expression.kind === ts.SyntaxKind.ImportKeyword
+        && argument && ts.isTemplateExpression(argument)
+        && argument.head.text === './tv-code-diff.js?retry='
+        && argument.templateSpans.length === 1
+        && ts.isIdentifier(argument.templateSpans[0].expression)
+        && argument.templateSpans[0].expression.text === 'attempt'
+        && argument.templateSpans[0].literal.text === '';
+      modules.push({ name: argument && ts.isStringLiteral(argument) ? argument.text
+        : diffRetry ? './tv-code-diff.js' : '<dynamic import or require>', typeOnly: false });
     }
     ts.forEachChild(node, visit);
   }

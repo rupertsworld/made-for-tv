@@ -274,6 +274,28 @@ test("the diff module loads only once the page gives the versions of a file", as
   expect(requests).toHaveLength(1);
 });
 
+test("a failed diff module load shows Retry while Source still works", async ({ page }) => {
+  let moduleAvailable = false;
+  await page.route("**/tv-code-diff.js*", route => moduleAvailable ? route.continue() : route.abort());
+  await ready(page);
+  await page.locator("tv-code").evaluate(viewer => {
+    (viewer as any).files = { "changed.ts": "new\n", "other.ts": "other\n" };
+    (viewer as any).diff = () => ({ before: "old\n", after: "new\n" });
+    (viewer as any).selected = "changed.ts";
+  });
+  await expect(page.locator(".cv-pane-content .cv-failure")).toContainText("Could not load diff");
+  await expectModes(page, ["Source", "Diff"], "Diff");
+  await mode(page, "Source").click();
+  await expect(page.locator(".cv-code-text").first()).toHaveText("new");
+  await expectModes(page, ["Source", "Diff"], "Source");
+  await mode(page, "Diff").click();
+  await expect(page.locator(".cv-pane-content .cv-failure")).toContainText("Could not load diff");
+  moduleAvailable = true;
+  await page.locator(".cv-pane-content .cv-retry").click();
+  expect(await diffLines(page)).toEqual([["change-deletion", "old"], ["change-addition", "new"]]);
+  await expect(page.locator(".cv-pane-content .cv-failure")).toHaveCount(0);
+});
+
 test("a refresh asks for the versions again and draws the change in place, or shows the file when it is unchanged", async ({ page }) => {
   await ready(page);
   await page.setViewportSize({ width: 900, height: 400 });
@@ -327,6 +349,37 @@ test("a refresh asks for the versions again and draws the change in place, or sh
   await expect(modes(page)).toHaveCount(0);
 });
 
+test("an older diff refresh cannot replace a newer result or its counts", async ({ page }) => {
+  await ready(page);
+  await page.locator("tv-code").evaluate(viewer => {
+    const state = { calls: 0, pending: [] as Array<(after: string) => void> };
+    (window as any).state = state;
+    (viewer as any).diff = () => {
+      if (++state.calls === 1) return { before: "old\n", after: "first\n" };
+      return new Promise(resolve => state.pending.push(after => resolve({ before: "old\n", after })));
+    };
+    (viewer as any).connection = {
+      list: () => [{ name: "changed.ts", type: "file" }, { name: "other.ts", type: "file" }],
+      read: () => "first\n",
+    };
+    (viewer as any).selected = "changed.ts";
+  });
+  await expect(counts(page)).toHaveText("+1\u22121");
+  await page.locator("tv-code").evaluate(viewer => (viewer as any).refresh("changed.ts"));
+  await expect.poll(() => page.evaluate(() => (window as any).state.pending.length)).toBe(1);
+  await page.locator("tv-code").evaluate(viewer => (viewer as any).refresh("changed.ts"));
+  await expect.poll(() => page.evaluate(() => (window as any).state.pending.length)).toBe(2);
+  await page.evaluate(() => (window as any).state.pending[1]("new\nadded\n"));
+  await expect(counts(page)).toHaveText("+2\u22121");
+  expect(await diffLines(page)).toContainEqual(["change-addition", "added"]);
+  await page.evaluate(() => (window as any).state.pending[0]("stale\n"));
+  await expect.poll(() => page.evaluate(() => (window as any).state.pending.length)).toBe(2);
+  await page.waitForTimeout(100);
+  await expect(counts(page)).toHaveText("+2\u22121");
+  expect(await diffLines(page)).toContainEqual(["change-addition", "added"]);
+  expect(await diffLines(page)).not.toContainEqual(["change-addition", "stale"]);
+});
+
 test("a diff draws unseen behind the previous content and replaces it once drawn", async ({ page }) => {
   await ready(page);
   const release = await holdDiffModule(page);
@@ -372,6 +425,28 @@ test("a diff opened first shows the loading pane, not the empty state, until it 
   release();
   await expect(diffBody(page)).toBeVisible();
   await expect(page.locator(".cv-pane-content > *")).toHaveCount(1);
+});
+
+test("returning to an already drawn diff clears loading while another file waits", async ({ page }) => {
+  await ready(page);
+  await page.locator("tv-code").evaluate(viewer => {
+    let resolveOther!: (value: object) => void;
+    (window as any).releaseOther = () => resolveOther({ before: "old\n", after: "other\n" });
+    (viewer as any).diff = (path: string) => path === "a.ts"
+      ? { before: "old\n", after: "new\n" }
+      : new Promise(resolve => { resolveOther = resolve; });
+    (viewer as any).files = { "a.ts": "new\n", "b.ts": "other\n" };
+    (viewer as any).selected = "a.ts";
+  });
+  await expect(diffBody(page)).toBeVisible();
+  await page.locator('.cv-row[data-path="b.ts"]').click();
+  await expect(page.locator(".cv-pane-progress")).toHaveClass(/cv-pane-progress-active/);
+  await expect(page.locator(".cv-pane-content")).toHaveClass(/cv-pane-faded/);
+  await page.locator('.cv-row[data-path="a.ts"]').click();
+  await expect(diffBody(page)).toBeVisible();
+  await expect(page.locator(".cv-pane-progress")).not.toHaveClass(/cv-pane-progress-active/);
+  await expect(page.locator(".cv-pane-content")).not.toHaveClass(/cv-pane-faded/);
+  await page.evaluate(() => (window as any).releaseOther());
 });
 
 test("opening one changed file after another keeps a drawn pane in view throughout", async ({ page }) => {

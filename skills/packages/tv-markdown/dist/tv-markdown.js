@@ -3225,20 +3225,20 @@ function footnotes(prefix) {
           if (!match || !validLabel(match[1])) return void 0;
           const definition = definitions.get(normalizeLabel(match[1]));
           if (!definition) return void 0;
-          if (!definition.references.length) cited.push(definition);
-          const reference = {
+          return {
             type: "footnoteReference",
             raw: match[0],
             definition,
-            number: cited.indexOf(definition) + 1,
-            occurrence: definition.references.length + 1,
+            number: 0,
+            occurrence: 0,
             adjacent: ((_a2 = tokens.at(-1)) == null ? void 0 : _a2.type) === "footnoteReference"
           };
-          definition.references.push(reference);
-          return reference;
         },
         renderer(token) {
           const reference = token;
+          if (!reference.definition.references.length) cited.push(reference.definition);
+          reference.number = cited.indexOf(reference.definition) + 1;
+          reference.occurrence = reference.definition.references.push(reference);
           const separator = reference.adjacent ? "," : "";
           return `<sup>${separator}<a id="${referenceId(prefix, reference)}" href="#${definitionId(prefix, reference.definition)}">${reference.number}</a></sup>`;
         }
@@ -3248,7 +3248,9 @@ function footnotes(prefix) {
         renderer(token) {
           const footnoteToken = token;
           if (!footnoteToken.definitions.length) return "";
-          const items = footnoteToken.definitions.map((definition) => {
+          const items = [];
+          for (let index = 0; index < footnoteToken.definitions.length; index++) {
+            const definition = footnoteToken.definitions[index];
             const content = this.parser.parse(definition.tokens).trimEnd();
             const backlinks = definition.references.map((reference, referenceIndex) => {
               const suffix = referenceIndex === 0 ? "" : `<sup>${referenceIndex + 1}</sup>`;
@@ -3256,10 +3258,10 @@ function footnotes(prefix) {
             }).join(" ");
             const body = content.endsWith("</p>") ? `${content.slice(0, -4)} ${backlinks}</p>` : `${content}
 ${backlinks}`;
-            return `<li id="${definitionId(prefix, definition)}">${body}</li>`;
-          }).join("\n");
+            items.push(`<li id="${definitionId(prefix, definition)}">${body}</li>`);
+          }
           return `<section><h2 id="${prefix}heading">Footnotes</h2><ol>
-${items}
+${items.join("\n")}
 </ol></section>
 `;
         }

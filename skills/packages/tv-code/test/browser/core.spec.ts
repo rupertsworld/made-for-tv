@@ -54,6 +54,12 @@ test("ships package, grammar and theme notices for the bundled highlighter, Mark
   expect([...themeSection.matchAll(/^-{80}\n([^\n]+)\nLicense: /gm)].map(match => match[1])).toEqual(["github-dark", "github-light"]);
 });
 
+test("the shipped copy instructions include bundled third-party notices", () => {
+  const skill = readFileSync("packages/tv-code/dist/SKILL.md", "utf8");
+  expect(skill).toMatch(/Copy `tv-code\.js`, `tv-code\.css` and `THIRD-PARTY-NOTICES\.txt`/);
+  expect(skill).toContain("copy `tv-code-diff.js` into the same folder");
+});
+
 test("child tags show nested relative paths, dedented scripts and live edits", async ({ page }) => {
   await ready(page, '<tv-code><tv-code-folder path="src"><tv-code-file path="a.ts"><script type="text/plain">\n  one\n</script></tv-code-file></tv-code-folder><tv-code-file path="other.txt">Other</tv-code-file></tv-code>');
   await page.locator('.cv-row[data-path="src"]').click();

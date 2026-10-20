@@ -11,7 +11,7 @@ The element is a view. It does not know where its files come from. Your page sup
 
 ## Load the element
 
-Copy `tv-code.js` and `tv-code.css` from this skill folder next to the artifact `index.html`, and load both:
+Copy `tv-code.js`, `tv-code.css` and `THIRD-PARTY-NOTICES.txt` from this skill folder next to the artifact `index.html`, and load the JavaScript and CSS:
 
 ```html
 <link rel="stylesheet" href="./tv-code.css">
@@ -126,7 +126,7 @@ viewer.diff = async path => changes.has(path)
   : null;
 ```
 
-The element calls `diff` again when a refresh covers the open file, so a diff stays current when you call `refresh(path)` for changes on either side. A function that throws counts as no diff.
+The element calls `diff` again when a refresh covers the open file, so a diff stays current when you call `refresh(path)` for changes on either side. A function that throws counts as no diff. If the diff module fails to load, the Diff view shows an error and Retry; the other views still work.
 
 ## Optional: share the open file in the address
 

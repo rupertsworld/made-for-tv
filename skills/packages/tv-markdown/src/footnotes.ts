@@ -78,20 +78,22 @@ export function footnotes(prefix: string): MarkedExtension {
           const definition = definitions.get(normalizeLabel(match[1]));
           if (!definition) return undefined;
 
-          if (!definition.references.length) cited.push(definition);
-          const reference: FootnoteReferenceToken = {
+          return {
             type: 'footnoteReference',
             raw: match[0],
             definition,
-            number: cited.indexOf(definition) + 1,
-            occurrence: definition.references.length + 1,
+            number: 0,
+            occurrence: 0,
             adjacent: tokens.at(-1)?.type === 'footnoteReference',
           };
-          definition.references.push(reference);
-          return reference;
         },
         renderer(token): string {
           const reference = token as FootnoteReferenceToken;
+          // Marked also tokenizes definitions that are never shown and image
+          // alt text. Assign numbers only when a citation reaches the output.
+          if (!reference.definition.references.length) cited.push(reference.definition);
+          reference.number = cited.indexOf(reference.definition) + 1;
+          reference.occurrence = reference.definition.references.push(reference);
           const separator = reference.adjacent ? ',' : '';
           return `<sup>${separator}<a id="${referenceId(prefix, reference)}" ` +
             `href="#${definitionId(prefix, reference.definition)}">${reference.number}</a></sup>`;
@@ -102,7 +104,9 @@ export function footnotes(prefix: string): MarkedExtension {
         renderer(token): string {
           const footnoteToken = token as FootnotesToken;
           if (!footnoteToken.definitions.length) return '';
-          const items = footnoteToken.definitions.map(definition => {
+          const items: string[] = [];
+          for (let index = 0; index < footnoteToken.definitions.length; index++) {
+            const definition = footnoteToken.definitions[index];
             const content = this.parser.parse(definition.tokens).trimEnd();
             const backlinks = definition.references.map((reference, referenceIndex) => {
               const suffix = referenceIndex === 0 ? '' : `<sup>${referenceIndex + 1}</sup>`;
@@ -111,9 +115,9 @@ export function footnotes(prefix: string): MarkedExtension {
             const body = content.endsWith('</p>')
               ? `${content.slice(0, -4)} ${backlinks}</p>`
               : `${content}\n${backlinks}`;
-            return `<li id="${definitionId(prefix, definition)}">${body}</li>`;
-          }).join('\n');
-          return `<section><h2 id="${prefix}heading">Footnotes</h2><ol>\n${items}\n</ol></section>\n`;
+            items.push(`<li id="${definitionId(prefix, definition)}">${body}</li>`);
+          }
+          return `<section><h2 id="${prefix}heading">Footnotes</h2><ol>\n${items.join('\n')}\n</ol></section>\n`;
         },
       },
     ],

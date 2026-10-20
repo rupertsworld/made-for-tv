@@ -94,14 +94,15 @@ test('a status letter and the header of a changed file match their templates', a
     diff: header.render({ path: 'new.ts', view: 'code', diff: { mode: 'diff', additions: 1, deletions: 0 } }),
     source: header.render({ path: 'new.ts', view: 'code', diff: { mode: 'source', additions: 1, deletions: 0 } }),
     markdown: header.render({ path: 'README.md', view: 'markdown', diff: { mode: 'diff' } }),
+    image: header.render({ path: 'cover.png', view: 'image', diff: { mode: 'diff', additions: 1, deletions: 1 } }),
   };
   await page.locator('#host').evaluate(host => {
     host.innerHTML = '<tv-code></tv-code>';
     const viewer = host.firstElementChild as any;
     // An added file, and equal versions, which have no counts.
-    const versions: Record<string, object> = { 'new.ts': { after: 'new' }, 'README.md': { before: '# Readme', after: '# Readme' } };
+    const versions: Record<string, object> = { 'new.ts': { after: 'new' }, 'README.md': { before: '# Readme', after: '# Readme' }, 'cover.png': { before: 'old', after: 'new' } };
     viewer.diff = (path: string) => versions[path] ?? null;
-    viewer.files = [{ path: 'b.ts', content: 'b' }, { path: 'new.ts', content: 'new', status: 'added' }, { path: 'README.md', content: '# Readme', status: 'modified' }];
+    viewer.files = [{ path: 'b.ts', content: 'b' }, { path: 'new.ts', content: 'new', status: 'added' }, { path: 'README.md', content: '# Readme', status: 'modified' }, { path: 'cover.png', src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==', status: 'modified' }];
   });
   await page.locator('.cv-row[data-path="new.ts"]').click();
   await expect(page.locator('.cv-pane-diff:not(.cv-pane-diff-pending)')).toBeVisible();
@@ -132,4 +133,8 @@ test('a status letter and the header of a changed file match their templates', a
   await expect(page.locator('.cv-pane-diff:not(.cv-pane-diff-pending)')).toHaveText('No differences');
   const markdown = await shapes('.cv-pane-header', reference.markdown);
   expect(markdown.actual).toEqual(markdown.reference);
+  await page.locator('.cv-row[data-path="cover.png"]').click();
+  await expect(page.locator('.cv-pane-diff:not(.cv-pane-diff-pending)')).toBeVisible();
+  const image = await shapes('.cv-pane-header', reference.image);
+  expect(image.actual).toEqual(image.reference);
 });

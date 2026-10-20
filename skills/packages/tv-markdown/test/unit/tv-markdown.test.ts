@@ -123,6 +123,34 @@ describe('heading ids', () => {
 });
 
 describe('footnotes', () => {
+  it('numbers only rendered citations when an unused definition cites another note', () => {
+    const element = render(`Visible.[^shown]
+
+[^unused]: Hidden citation.[^other]
+[^other]: Other note.
+[^shown]: Shown note.`);
+    const markers = [...element.querySelectorAll<HTMLAnchorElement>('a[data-footnote-ref]')];
+    expect(markers.map(marker => marker.textContent)).toEqual(['1']);
+    expect([...element.querySelectorAll('section[data-footnotes] > ol > li')]).toHaveLength(1);
+    expect(element.querySelector('section[data-footnotes]')?.textContent).toContain('Shown note.');
+    expect(element.querySelector('section[data-footnotes]')?.textContent).not.toContain('Other note.');
+    const backlinks = [...element.querySelectorAll<HTMLAnchorElement>('a[data-footnote-backref]')];
+    expect(backlinks.map(link => link.getAttribute('href'))).toEqual([`#${markers[0].id}`]);
+  });
+
+  it('does not number a reference used only as image alt text', () => {
+    const element = render(`![Hidden [^other]](cover.png) Visible.[^shown]
+
+[^other]: Other note.
+[^shown]: Shown note.`);
+    const markers = [...element.querySelectorAll<HTMLAnchorElement>('a[data-footnote-ref]')];
+    expect(markers.map(marker => marker.textContent)).toEqual(['1']);
+    expect(element.querySelector('img')?.getAttribute('alt')).toContain('[^other]');
+    expect([...element.querySelectorAll('section[data-footnotes] > ol > li')]).toHaveLength(1);
+    expect(element.querySelector('section[data-footnotes]')?.textContent).not.toContain('Other note.');
+    expect(element.querySelector('a[data-footnote-backref]')?.getAttribute('href')).toBe(`#${markers[0].id}`);
+  });
+
   it('numbers citations in first-use order and links every repeated citation both ways', () => {
     const element = render(`# Footnote shared
 
